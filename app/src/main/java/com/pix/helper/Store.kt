@@ -38,9 +38,13 @@ object Store {
             "Если вопрос простой и ответ очевиден из переписки — можно ответить по сути. " +
             "Если что-то срочное — пусть напишут слово «срочно»."
 
-    const val DEFAULT_PERSONA =
+    private const val OLD_PERSONA_2 =
         "Отвечай дружелюбно, на «ты» с друзьями, по сути вопроса — как ответил бы я сам. " +
             "Если без меня не решить — скажи, что уточню и напишу."
+
+    const val DEFAULT_PERSONA =
+        "Отвечай сам, как будто это я: по сути вопроса, дружелюбно, на «ты» с друзьями. " +
+            "Не говори, что я занят. Только если без меня правда не решить — коротко скажи, что уточню."
 
     private val p: SharedPreferences
         get() = App.instance.getSharedPreferences("pix", Context.MODE_PRIVATE)
@@ -83,7 +87,7 @@ object Store {
         set(v) = put("ownerName", v)
 
     var persona: String
-        get() = s("persona", DEFAULT_PERSONA).let { if (it == OLD_PERSONA) DEFAULT_PERSONA else it }
+        get() = s("persona", DEFAULT_PERSONA).let { if (it == OLD_PERSONA || it == OLD_PERSONA_2) DEFAULT_PERSONA else it }
         set(v) = put("persona", v)
 
     var prefix: String
