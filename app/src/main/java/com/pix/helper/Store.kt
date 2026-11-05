@@ -179,6 +179,22 @@ object Store {
         get() = p.getBoolean("shakeReact", true)
         set(v) = p.edit().putBoolean("shakeReact", v).apply()
 
+    /** Счётчик запросов к Gemini за сегодня */
+    @Synchronized
+    fun countRequest() {
+        val day = java.text.SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+        if (s("reqDay", "") != day) {
+            put("reqDay", day)
+            p.edit().putInt("reqCount", 0).apply()
+        }
+        p.edit().putInt("reqCount", p.getInt("reqCount", 0) + 1).apply()
+    }
+
+    fun requestsToday(): Int {
+        val day = java.text.SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+        return if (s("reqDay", "") == day) p.getInt("reqCount", 0) else 0
+    }
+
     @Synchronized
     fun addOwnSample(text: String) {
         val t = text.trim()

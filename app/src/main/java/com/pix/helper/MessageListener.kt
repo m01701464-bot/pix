@@ -414,7 +414,7 @@ class MessageListener : NotificationListenerService() {
             }
         } catch (e: Exception) {
             val m = e.message ?: e.toString()
-            if (e is Gemini.ApiError && e.retryable && attempt < 3) {
+            if (e is Gemini.ApiError && e.retryable && attempt < (if (e.limit) 1 else 3)) {
                 // сервер занят — попробуем ещё раз чуть позже, не сдаёмся
                 Store.log("error", "$m — повторю через минуту (${msg.chat})")
                 main.postDelayed({ exec.execute { autoReply(pkg, app, conv, msg, action, mode, attempt + 1, startedAt) } }, 60_000L)

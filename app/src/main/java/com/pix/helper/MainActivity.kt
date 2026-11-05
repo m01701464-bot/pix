@@ -39,6 +39,7 @@ class MainActivity : Activity() {
     private lateinit var overlayBtn: Button
     private lateinit var logText: TextView
     private lateinit var keyResult: TextView
+    private lateinit var reqText: TextView
     private val permRows = ArrayList<Pair<TextView, () -> Boolean>>()
 
     private lateinit var fGKey: EditText
@@ -156,6 +157,10 @@ class MainActivity : Activity() {
             }
         }
         permCard.addView(button("О приложении (ограниченные настройки)") { openAppDetails() }, fullWidth(top = 8))
+        if (Build.MANUFACTURER.lowercase().let { it.contains("xiaomi") || it.contains("redmi") || it.contains("poco") }) {
+            permCard.addView(text("Xiaomi: обязательно включи «Автозапуск» для Пикса, иначе система не пустит его к уведомлениям.", 13f, 0xFFFFC66B.toInt()), fullWidth(top = 10))
+            permCard.addView(button("Автозапуск (Xiaomi)", primary = true) { openMiuiAutostart() }, fullWidth(top = 6))
+        }
 
         // Claude API
         val apiCard = card(root, "Мозги Пикса")
@@ -185,6 +190,8 @@ class MainActivity : Activity() {
         fReplyModel = field(claudeBox, "Модель для автоответов", Store.replyModel, "claude-haiku-5-5")
         applyProviderUi()
         keyResult = text("", 13f, cSub)
+        reqText = text("", 12f, cSub)
+        apiCard.addView(reqText, fullWidth(top = 6))
         apiCard.addView(button("Проверить ключ") { testKey() }, fullWidth(top = 10))
         apiCard.addView(keyResult)
 
@@ -300,6 +307,7 @@ class MainActivity : Activity() {
             tv.setTextColor(if (ok) cAccent else cDark)
             tv.background = if (ok) null else round(cAccent, dp(10))
         }
+        reqText.text = "Запросов к Gemini сегодня: ${Store.requestsToday()}"
         learnedText.text = "Выучено моих сообщений: ${Store.ownSamples(100).size}"
         // если Пикс сам запомнил кого-то из чата — показать это в поле
         if (Store.peopleNotes != peopleSynced) {
@@ -496,6 +504,22 @@ class MainActivity : Activity() {
         true
     } catch (e: Exception) {
         false
+    }
+
+    private fun openMiuiAutostart() {
+        val tries = listOf(
+            Intent().setComponent(android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+            Intent("miui.intent.action.OP_AUTO_START").addCategory(Intent.CATEGORY_DEFAULT)
+        )
+        for (i in tries) {
+            try {
+                startActivity(i)
+                return
+            } catch (_: Exception) {
+            }
+        }
+        toast("Открой: Безопасность → Разрешения → Автозапуск → Пикс")
+        openAppDetails()
     }
 
     private fun openAppDetails() {

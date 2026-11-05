@@ -10,7 +10,7 @@ object Gemini {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
     const val FALLBACK_MODEL = "gemini-flash-latest"
 
-    class ApiError(msg: String, val tryNextModel: Boolean = false, val retryable: Boolean = false) : Exception(msg) {
+    class ApiError(msg: String, val tryNextModel: Boolean = false, val retryable: Boolean = false, val limit: Boolean = false) : Exception(msg) {
         /** Ошибка ключа — тут обходные пути не помогут */
         val keyProblem: Boolean get() = (message ?: "").contains("ключ", ignoreCase = true)
     }
@@ -55,6 +55,7 @@ object Gemini {
             conn.setRequestProperty("content-type", "application/json")
             conn.setRequestProperty("x-goog-api-key", key)
             try {
+                Store.countRequest()
                 conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             } catch (e: java.io.IOException) {
                 throw netError(e)
@@ -79,7 +80,8 @@ object Gemini {
                     keyBad -> ApiError("Неверный ключ Gemini")
                     code == 404 -> ApiError("Модель $model недоступна", tryNextModel = true)
                     code == 429 && msg.contains("limit: 0") -> ApiError("Модель $model не входит в бесплатный тариф", tryNextModel = true)
-                    code == 429 -> ApiError("Лимит бесплатного тарифа на сейчас исчерпан — подожди минуту", retryable = true)
+                    // у каждой модели свой лимит — сразу пробуем следующую, а не долбим эту
+                    code == 429 -> ApiError("Лимит бесплатного тарифа Gemini исчерпан на всех моделях — подожди (минутный лимит — минута, дневной — до ~13:00)", tryNextModel = true, retryable = true, limit = true)
                     code == 503 -> ApiError("Gemini перегружен, попробуй через минуту", retryable = true)
                     code == 500 || code == 502 || code == 504 -> ApiError("Сбой сервера Gemini $code: ${msg.take(120)}", retryable = true)
                     else -> ApiError("Ошибка Gemini $code: $msg")
