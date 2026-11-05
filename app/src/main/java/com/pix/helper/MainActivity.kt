@@ -48,10 +48,12 @@ class MainActivity : Activity() {
     private lateinit var fGReply: EditText
     private lateinit var btnGemini: Button
     private lateinit var btnClaude: Button
-    private lateinit var btnGroq: Button
-    private lateinit var groqBox: LinearLayout
-    private lateinit var fGroqKey: EditText
-    private lateinit var fGroqModel: EditText
+    private lateinit var btnMistral: Button
+    private lateinit var btnRouter: Button
+    private lateinit var fMistralKey: EditText
+    private lateinit var fMistralModel: EditText
+    private lateinit var fOrKey: EditText
+    private lateinit var fOrModel: EditText
     private lateinit var geminiBox: LinearLayout
     private lateinit var claudeBox: LinearLayout
     private var provider = Store.provider
@@ -152,7 +154,7 @@ class MainActivity : Activity() {
         // Пикс-друг
         val buddyCard = card(root, "Пикс-друг 👀")
         buddyCard.addView(text("Пикс смотрит в телефон вместе с тобой и иногда бросает реплики: ржёт с мемов, комментирует видео и то, что ты пишешь. Работает, пока глаз на экране.", 13f, cSub))
-        buddyCard.addView(text("⚠️ Текст и скриншоты экрана отправляются ИИ (Gemini или Groq). На экранах с паролями и в приложениях из исключений Пикс молчит.", 12f, 0xFFFFC66B.toInt()), fullWidth(top = 6))
+        buddyCard.addView(text("⚠️ Текст и скриншоты экрана отправляются ИИ (Gemini, Mistral или OpenRouter). На экранах с паролями и в приложениях из исключений Пикс молчит.", 12f, 0xFFFFC66B.toInt()), fullWidth(top = 6))
         val levels = listOf("Выкл", "Редко", "Иногда", "Часто")
         buddyBtns.clear()
         levels.forEachIndexed { i, label -> buddyBtns.add(button(label) { setBuddyLevel(i) }) }
@@ -212,24 +214,13 @@ class MainActivity : Activity() {
 
         // Claude API
         val apiCard = card(root, "Мозги Пикса")
-        btnGroq = button("Groq") { setProvider("groq") }
         btnGemini = button("Gemini") { setProvider("gemini") }
+        btnMistral = button("Mistral") { setProvider("mistral") }
+        btnRouter = button("Router") { setProvider("openrouter") }
         btnClaude = button("Claude") { setProvider("claude") }
-        apiCard.addView(row(btnGroq, btnGemini, btnClaude))
-        apiCard.addView(text("Groq и Gemini — бесплатно, Claude — платно. Совет: основной — Gemini (пишет живее), и вставь ещё ключ Groq — если у Gemini кончится лимит, Пикс сам ответит через Groq.", 12f, cSub), fullWidth(top = 6))
-
-        groqBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        apiCard.addView(groqBox, fullWidth(top = 6))
-        groqBox.addView(text("Бесплатный ключ без карты: открой console.groq.com → войди через Google → API Keys → Create API Key, скопируй (начинается с gsk_) и вставь сюда.", 13f, cSub), fullWidth(top = 6))
-        groqBox.addView(button("Открыть Groq Console") {
-            try {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://console.groq.com/keys")))
-            } catch (e: Exception) {
-                toast("Открой console.groq.com/keys в браузере")
-            }
-        }, fullWidth(top = 8))
-        fGroqKey = field(groqBox, "Ключ Groq", Store.groqKey, "gsk_…", password = true)
-        fGroqModel = field(groqBox, "Модель", Store.groqModel, "openai/gpt-oss-120b")
+        apiCard.addView(text("Основной ИИ:", 13f, cSub), fullWidth(top = 4))
+        apiCard.addView(row(btnGemini, btnMistral, btnRouter, btnClaude))
+        apiCard.addView(text("Вставь ключи от всех бесплатных — Gemini, Mistral, OpenRouter. Отвечает основной, а когда у него кончится лимит или он сбоит, Пикс сам переходит к следующему.", 12f, cSub), fullWidth(top = 6))
 
         geminiBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apiCard.addView(geminiBox, fullWidth(top = 6))
@@ -245,6 +236,18 @@ class MainActivity : Activity() {
         fGChat = field(geminiBox, "Модель для поручений", Store.gChatModel, "gemini-3.8-flash")
         fGReply = field(geminiBox, "Модель для автоответов", Store.gReplyModel, "gemini-3.5-flash-lite")
 
+        apiCard.addView(text("Mistral", 15f, cText, bold = true), fullWidth(top = 14))
+        apiCard.addView(text("Бесплатно: console.mistral.ai → войди → API Keys → Create new key (может попросить подтвердить номер телефона и выбрать бесплатный план Experiment).", 13f, cSub), fullWidth(top = 4))
+        apiCard.addView(button("Открыть Mistral Console") { openUrl("https://console.mistral.ai/api-keys") }, fullWidth(top = 8))
+        fMistralKey = field(apiCard, "Ключ Mistral", Store.mistralKey, "…", password = true)
+        fMistralModel = field(apiCard, "Модель Mistral", Store.mistralModel, "mistral-medium-latest")
+
+        apiCard.addView(text("OpenRouter", 15f, cText, bold = true), fullWidth(top = 14))
+        apiCard.addView(text("Один ключ ко многим бесплатным моделям: openrouter.ai → войди → Keys → Create Key (начинается с sk-or-).", 13f, cSub), fullWidth(top = 4))
+        apiCard.addView(button("Открыть OpenRouter") { openUrl("https://openrouter.ai/keys") }, fullWidth(top = 8))
+        fOrKey = field(apiCard, "Ключ OpenRouter", Store.orKey, "sk-or-…", password = true)
+        fOrModel = field(apiCard, "Модель (пусто — Пикс сам выберет бесплатную)", Store.orModel, "")
+
         claudeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apiCard.addView(claudeBox, fullWidth(top = 6))
         claudeBox.addView(text("Ключ: console.anthropic.com → API Keys (нужно пополнить баланс).", 13f, cSub), fullWidth(top = 6))
@@ -255,7 +258,7 @@ class MainActivity : Activity() {
         keyResult = text("", 13f, cSub)
         reqText = text("", 12f, cSub)
         apiCard.addView(reqText, fullWidth(top = 6))
-        apiCard.addView(button("Проверить ключ") { testKey() }, fullWidth(top = 10))
+        apiCard.addView(button("Проверить все ключи") { testKey() }, fullWidth(top = 10))
         apiCard.addView(keyResult)
 
         // Как отвечать
@@ -461,8 +464,10 @@ class MainActivity : Activity() {
 
     private fun save() {
         Store.provider = provider
-        Store.groqKey = fGroqKey.text.toString().trim()
-        Store.groqModel = fGroqModel.text.toString().trim().ifEmpty { "openai/gpt-oss-120b" }
+        Store.mistralKey = fMistralKey.text.toString().trim()
+        Store.mistralModel = fMistralModel.text.toString().trim().ifEmpty { "mistral-medium-latest" }
+        Store.orKey = fOrKey.text.toString().trim()
+        Store.orModel = fOrModel.text.toString().trim()
         Store.geminiKey = fGKey.text.toString().trim()
         Store.gChatModel = fGChat.text.toString().trim().ifEmpty { "gemini-3.8-flash" }
         Store.gReplyModel = fGReply.text.toString().trim().ifEmpty { "gemini-3.5-flash-lite" }
@@ -612,34 +617,36 @@ class MainActivity : Activity() {
     }
 
     private fun applyProviderUi() {
-        styleButton(btnGroq, provider == "groq")
         styleButton(btnGemini, provider == "gemini")
+        styleButton(btnMistral, provider == "mistral")
+        styleButton(btnRouter, provider == "openrouter")
         styleButton(btnClaude, provider == "claude")
-        // ключ Groq показываем и при Gemini — как запасной
-        groqBox.visibility = if (provider == "groq" || provider == "gemini") View.VISIBLE else View.GONE
-        geminiBox.visibility = if (provider == "gemini") View.VISIBLE else View.GONE
+        // ключи бесплатных видны всегда — они нужны для чередования
+        geminiBox.visibility = View.VISIBLE
         claudeBox.visibility = if (provider == "claude") View.VISIBLE else View.GONE
+    }
+
+    private fun openUrl(u: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+        } catch (e: Exception) {
+            toast("Открой $u в браузере")
+        }
     }
 
     private fun testKey() {
         save()
-        keyResult.text = "Проверяю…"
+        keyResult.text = "Проверяю все ключи…"
         keyResult.setTextColor(cSub)
         Thread {
             val res = try {
-                val step1 = if (Brain.gemini()) {
-                    runOnUiThread { keyResult.text = "Шаг 1/2: проверяю связь с Google и ключ…" }
-                    Gemini.ping()
-                } else ""
-                runOnUiThread { keyResult.text = "Шаг 2/2: прошу ${Brain.name()} поздороваться…" }
-                val r = Brain.simple("Ответь одним коротким предложением.", "Поздоровайся как Пикс — пиксельный глаз-помощник.", 60, reply = true)
-                true to ("✅ ${Brain.name()} работает" + (if (step1.isNotEmpty()) " — $step1" else "") + ":\n" + r)
+                Brain.testAll()
             } catch (e: Exception) {
-                false to ("⚠️ " + (e.message ?: e.toString()))
+                "⚠️ " + (e.message ?: e.toString())
             }
             runOnUiThread {
-                keyResult.text = res.second
-                keyResult.setTextColor(if (res.first) cAccent else 0xFFFF8A8A.toInt())
+                keyResult.text = res
+                keyResult.setTextColor(if (res.contains("✅")) cAccent else 0xFFFF8A8A.toInt())
             }
         }.start()
     }

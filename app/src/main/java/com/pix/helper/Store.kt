@@ -53,18 +53,27 @@ object Store {
     private fun put(k: String, v: String) = p.edit().putString(k, v).apply()
 
     // ---------- Настройки ----------
-    /** "gemini", "groq" (оба бесплатно) или "claude" (платно) */
+    /** Основной ИИ: "gemini", "mistral", "openrouter" (бесплатно) или "claude" (платно) */
     var provider: String
-        get() = s("provider", "gemini")
+        get() = s("provider", "gemini").let { if (it == "groq") "gemini" else it }
         set(v) = put("provider", v)
 
-    var groqKey: String
-        get() = s("groqKey", "")
-        set(v) = put("groqKey", v)
+    var mistralKey: String
+        get() = s("mistralKey", "")
+        set(v) = put("mistralKey", v)
 
-    var groqModel: String
-        get() = s("groqModel", "openai/gpt-oss-120b")
-        set(v) = put("groqModel", v)
+    var mistralModel: String
+        get() = s("mistralModel", "mistral-medium-latest")
+        set(v) = put("mistralModel", v)
+
+    var orKey: String
+        get() = s("orKey", "")
+        set(v) = put("orKey", v)
+
+    /** Модель OpenRouter; пусто — Пикс сам выбирает из бесплатных */
+    var orModel: String
+        get() = s("orModel", "")
+        set(v) = put("orModel", v)
 
     var geminiKey: String
         get() = s("geminiKey", "")

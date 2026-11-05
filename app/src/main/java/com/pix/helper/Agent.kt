@@ -33,12 +33,7 @@ object Agent {
     }
 
     private fun run(userText: String): String {
-        val raw: String = try {
-            runWith(Store.provider, userText)
-        } catch (e: Exception) {
-            val b = Brain.backup()
-            if (b != null && Brain.worthFallback(e)) runWith(b, userText) else throw e
-        }
+        val raw: String = Brain.rotate { p -> runWith(p, userText) }
         val finalText = raw.ifBlank { "Готово ✅" }
         synchronized(history) {
             history.add("user" to userText)
@@ -49,7 +44,8 @@ object Agent {
     }
 
     private fun runWith(provider: String, userText: String): String = when (provider) {
-        "groq" -> runTextAgent(userText) { sys, turns -> Groq.chat(sys, turns, 2048) }
+        "mistral" -> runTextAgent(userText) { sys, turns -> Mistral.chat(sys, turns, 1500) }
+        "openrouter" -> runTextAgent(userText) { sys, turns -> OpenRouter.chat(sys, turns, 1500) }
         "claude" -> runClaude(userText)
         else -> runGeminiSafe(userText)
     }

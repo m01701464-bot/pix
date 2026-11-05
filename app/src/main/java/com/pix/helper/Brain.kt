@@ -3,48 +3,58 @@ package com.pix.helper
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Выбор «мозгов»: Gemini / Groq (бесплатно) или Claude (платно) + запасной бесплатный ИИ. */
+/**
+ * «Мозги» Пикса: Gemini, Mistral, OpenRouter (бесплатно) или Claude (платно).
+ * Если основной ИИ упёрся в лимит или сбоит — Пикс по очереди пробует остальные, у которых есть ключ.
+ */
 object Brain {
-    fun groq(): Boolean = Store.provider == "groq"
+    val FREE = listOf("gemini", "mistral", "openrouter")
+
     fun gemini(): Boolean = Store.provider == "gemini"
 
-    fun name(): String = when (Store.provider) {
-        "groq" -> "Groq"
+    fun name(p: String = Store.provider): String = when (p) {
+        "mistral" -> "Mistral"
+        "openrouter" -> "OpenRouter"
         "claude" -> "Claude"
         else -> "Gemini"
     }
 
-    fun hasKey(): Boolean = when (Store.provider) {
-        "groq" -> Store.groqKey.isNotBlank()
-        "claude" -> Store.apiKey.isNotBlank()
-        else -> Store.geminiKey.isNotBlank()
+    fun keyFor(p: String): String = when (p) {
+        "mistral" -> Store.mistralKey
+        "openrouter" -> Store.orKey
+        "claude" -> Store.apiKey
+        else -> Store.geminiKey
     }
 
-    /** Запасной бесплатный ИИ, если у основного есть ключ к другому */
-    fun backup(): String? = when (Store.provider) {
-        "gemini" -> if (Store.groqKey.isNotBlank()) "groq" else null
-        "groq" -> if (Store.geminiKey.isNotBlank()) "gemini" else null
-        else -> null
+    fun hasKey(): Boolean = chain().any { keyFor(it).isNotBlank() }
+
+    /** Очередь: сначала основной, потом остальные бесплатные с ключами */
+    fun chain(): List<String> {
+        val main = Store.provider
+        val l = ArrayList<String>()
+        l.add(main)
+        for (p in FREE) if (p != main && keyFor(p).isNotBlank()) l.add(p)
+        return l.filter { keyFor(it).isNotBlank() }.ifEmpty { listOf(main) }
     }
 
-    /** Ошибки, при которых есть смысл попробовать запасной ИИ (лимит, перегрузка, сбой сети) */
-    fun worthFallback(e: Exception): Boolean = when (e) {
-        is Gemini.ApiError -> !e.keyProblem && (e.limit || e.retryable || e.tryNextModel)
-        is Groq.ApiError -> e.limit || e.tryNextModel
-        else -> false
-    }
-
-    fun simple(system: String, user: String, maxTokens: Int, reply: Boolean): String {
-        return try {
-            simpleWith(Store.provider, system, user, maxTokens, reply)
-        } catch (e: Exception) {
-            val b = backup()
-            if (b != null && worthFallback(e)) {
-                Store.log("busy", "${name()} недоступен (${e.message?.take(50)}) — отвечаю через запасной ИИ")
-                simpleWith(b, system, user, maxTokens, reply)
-            } else throw e
+    /** Ошибка ключа или настроек — дальше по очереди всё равно пробуем */
+    fun <T> rotate(task: (String) -> T): T {
+        var first: Exception? = null
+        val list = chain()
+        for ((i, p) in list.withIndex()) {
+            try {
+                val r = task(p)
+                if (i > 0) Store.log("busy", "${name(list[0])} недоступен — ответил через ${name(p)}")
+                return r
+            } catch (e: Exception) {
+                if (first == null) first = e
+            }
         }
+        throw first ?: Exception("ИИ не ответил")
     }
+
+    fun simple(system: String, user: String, maxTokens: Int, reply: Boolean): String =
+        rotate { p -> simpleWith(p, system, user, maxTokens, reply) }
 
     /** Короткая дружеская реплика о том, что сейчас на экране. Формат ответа: «эмоция|реплика» или SKIP. */
     fun comment(app: String, screen: String, typed: String, imageB64: String?): String {
@@ -72,18 +82,18 @@ $character
             "Текст на экране:\n${screen.take(1500)}"
         if (imageB64 != null && Store.geminiKey.isNotBlank()) {
             try {
-                // полноценная Flash с короткими «размышлениями»; если занята — сама переключится на лёгкую
+                // картинки умеет смотреть Gemini; если не вышло — дальше просто по тексту
                 return Gemini.simpleImage(Store.gChatModel, sys, user, imageB64, 500)
-            } catch (e: Exception) {
-                // не вышло с картинкой — пробуем просто по тексту
+            } catch (_: Exception) {
             }
         }
         return simple(sys, user, 300, reply = true)
     }
 
-    private fun simpleWith(provider: String, system: String, user: String, maxTokens: Int, reply: Boolean): String {
+    fun simpleWith(provider: String, system: String, user: String, maxTokens: Int, reply: Boolean): String {
         return when (provider) {
-            "groq" -> Groq.chat(system, listOf("user" to user), maxOf(maxTokens, 1024))
+            "mistral" -> Mistral.chat(system, listOf("user" to user), maxOf(maxTokens, 512))
+            "openrouter" -> OpenRouter.chat(system, listOf("user" to user), maxOf(maxTokens, 1024))
             "claude" -> {
                 val model = if (reply) Store.replyModel else Store.chatModel
                 val resp = Claude.call(
@@ -93,8 +103,22 @@ $character
                 )
                 Claude.textOf(resp)
             }
-            // автоответы идут через умную модель с короткими «размышлениями» — и толково, и быстро
+            // умная модель с короткими «размышлениями» — и толково, и быстро
             else -> Gemini.simple(Store.gChatModel, system, user, maxOf(maxTokens, 2048), fast = reply)
+        }
+    }
+
+    /** Проверить все ИИ, к которым есть ключи */
+    fun testAll(): String {
+        val list = (listOf(Store.provider) + FREE).distinct().filter { keyFor(it).isNotBlank() }
+        if (list.isEmpty()) return "⚠️ Не вставлен ни один ключ"
+        return list.joinToString("\n") { p ->
+            try {
+                val r = simpleWith(p, "Ответь одним коротким предложением.", "Поздоровайся как Пикс — пиксельный глаз-помощник.", 60, reply = true)
+                "✅ ${name(p)}: ${r.take(80)}"
+            } catch (e: Exception) {
+                "⚠️ ${name(p)}: ${e.message?.take(120)}"
+            }
         }
     }
 }

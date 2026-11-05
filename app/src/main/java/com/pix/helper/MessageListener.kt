@@ -464,8 +464,8 @@ class MessageListener : NotificationListenerService() {
             }
         } catch (e: Exception) {
             val m = e.message ?: e.toString()
-            val retry = (e is Gemini.ApiError && e.retryable && attempt < (if (e.limit) 1 else 3)) ||
-                (e is Groq.ApiError && e.tryNextModel && attempt < 1)
+            // все ИИ по очереди не ответили — попробуем ещё раз чуть позже
+            val retry = attempt < 1 || (e is Gemini.ApiError && e.retryable && !e.limit && attempt < 3)
             if (retry) {
                 // сервер занят — попробуем ещё раз чуть позже, не сдаёмся
                 Store.log("error", "$m — повторю через минуту (${msg.chat})")
