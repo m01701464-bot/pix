@@ -90,9 +90,10 @@ object Store {
         get() = s("prefix", "🤖")
         set(v) = put("prefix", v)
 
-    var cooldownMin: Int
-        get() = p.getInt("cooldown", 10)
-        set(v) = p.edit().putInt("cooldown", v).apply()
+    /** Пауза между автоответами в один чат (режим «Я занят»), секунды */
+    var cooldownSec: Int
+        get() = p.getInt("cooldownSec", 30)
+        set(v) = p.edit().putInt("cooldownSec", v).apply()
 
     /** Отвечать самому, если хозяин молчит silenceMin минут */
     var silenceReply: Boolean

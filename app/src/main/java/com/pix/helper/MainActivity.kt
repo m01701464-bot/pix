@@ -196,7 +196,7 @@ class MainActivity : Activity() {
         fName = field(replyCard, "Как тебя зовут", Store.ownerName, "Например: Маша")
         fPersona = field(replyCard, "Инструкция для Пикса", Store.persona, "", multiline = true)
         fPrefix = field(replyCard, "Метка перед автоответом (пусто — без метки)", Store.prefix, "🤖")
-        fCooldown = field(replyCard, "В режиме «Я занят»: не чаще раза в N минут на чат", Store.cooldownMin.toString(), "10", number = true)
+        fCooldown = field(replyCard, "В режиме «Я занят»: пауза между ответами в один чат, секунд", Store.cooldownSec.toString(), "30", number = true)
         cbGroups = checkbox(replyCard, "Отвечать и в групповых чатах", Store.replyGroups)
         cbUrgent = checkbox(replyCard, "Будить меня, если пишут «срочно»", Store.notifyUrgent)
 
@@ -354,7 +354,7 @@ class MainActivity : Activity() {
         Store.ownerName = fName.text.toString().trim()
         Store.persona = fPersona.text.toString().trim().ifEmpty { Store.DEFAULT_PERSONA }
         Store.prefix = fPrefix.text.toString().trim()
-        Store.cooldownMin = fCooldown.text.toString().trim().toIntOrNull()?.coerceIn(0, 1440) ?: 10
+        Store.cooldownSec = fCooldown.text.toString().trim().toIntOrNull()?.coerceIn(0, 86_400) ?: 30
         Store.replyGroups = cbGroups.isChecked
         Store.silenceReply = cbSilence.isChecked
         Store.silenceMin = fSilence.text.toString().trim().toIntOrNull()?.coerceIn(1, 120) ?: 2
