@@ -28,13 +28,21 @@ object Gemini {
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 20_000
-            conn.readTimeout = 120_000
+            conn.readTimeout = 90_000
             conn.doOutput = true
             conn.setRequestProperty("content-type", "application/json")
             conn.setRequestProperty("x-goog-api-key", key)
-            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            try {
+                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            } catch (e: java.io.IOException) {
+                throw netError(e)
+            }
 
-            val code = conn.responseCode
+            val code = try {
+                conn.responseCode
+            } catch (e: java.io.IOException) {
+                throw netError(e)
+            }
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
             if (code !in 200..299) {
@@ -55,6 +63,49 @@ object Gemini {
                 }
             }
             return JSONObject(text)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun netError(e: java.io.IOException): ApiError = when (e) {
+        is java.net.UnknownHostException -> ApiError("Нет интернета или не находится сервер Google")
+        is java.net.SocketTimeoutException ->
+            if ((e.message ?: "").contains("connect", true)) ApiError("Не могу подключиться к серверам Google — попробуй другой интернет (Wi-Fi / мобильный) или VPN")
+            else ApiError("Gemini слишком долго отвечает — попробуй ещё раз")
+        else -> ApiError("Сеть: ${e.message ?: e.javaClass.simpleName}")
+    }
+
+    /** Быстрая проверка: связь с Google и правильность ключа, без генерации текста. */
+    fun ping(): String {
+        val key = Store.geminiKey.trim()
+        if (key.isEmpty()) throw ApiError("Не задан ключ Gemini")
+        val conn = URL(BASE.removeSuffix("/") + "?pageSize=50").openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            conn.setRequestProperty("x-goog-api-key", key)
+            val code = try {
+                conn.responseCode
+            } catch (e: java.io.IOException) {
+                throw netError(e)
+            }
+            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+            if (code !in 200..299) {
+                val msg = try {
+                    JSONObject(text).getJSONObject("error").optString("message", text)
+                } catch (e: Exception) {
+                    text.take(200)
+                }
+                throw ApiError(if (code == 400 || code == 401 || code == 403) "Ключ не принят Google: $msg" else "Ошибка Gemini $code: $msg")
+            }
+            val models = JSONObject(text).optJSONArray("models") ?: JSONArray()
+            var flash = 0
+            for (i in 0 until models.length()) {
+                if (models.optJSONObject(i)?.optString("name")?.contains("flash") == true) flash++
+            }
+            return "связь есть, ключ принят (моделей Flash: $flash)"
         } finally {
             conn.disconnect()
         }

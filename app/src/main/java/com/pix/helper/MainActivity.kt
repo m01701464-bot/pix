@@ -364,8 +364,13 @@ class MainActivity : Activity() {
         keyResult.setTextColor(cSub)
         Thread {
             val res = try {
-                val r = Brain.simple("Ответь одним коротким предложением.", "Поздоровайся как Пикс — пиксельный глаз-помощник.", 60, reply = false)
-                true to ("✅ ${Brain.name()} работает: " + r)
+                val step1 = if (Brain.gemini()) {
+                    runOnUiThread { keyResult.text = "Шаг 1/2: проверяю связь с Google и ключ…" }
+                    Gemini.ping()
+                } else ""
+                runOnUiThread { keyResult.text = "Шаг 2/2: прошу ${Brain.name()} поздороваться…" }
+                val r = Brain.simple("Ответь одним коротким предложением.", "Поздоровайся как Пикс — пиксельный глаз-помощник.", 60, reply = true)
+                true to ("✅ ${Brain.name()} работает" + (if (step1.isNotEmpty()) " — $step1" else "") + ":\n" + r)
             } catch (e: Exception) {
                 false to ("⚠️ " + (e.message ?: e.toString()))
             }
