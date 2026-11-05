@@ -337,6 +337,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        showCrashIfAny()
         // после обновления Android иногда «забывает» подключить слушатель — напоминаем
         if (listenerEnabled() && !MessageListener.connected) MessageListener.rebind(this)
         Bus.on(busListener)
@@ -524,6 +525,22 @@ class MainActivity : Activity() {
                 toast("Сохранено")
             }
             .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun showCrashIfAny() {
+        val prefs = getSharedPreferences("pix", MODE_PRIVATE)
+        val crash = prefs.getString("lastCrash", null) ?: return
+        prefs.edit().remove("lastCrash").apply()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("😵 Пикс упал в прошлый раз")
+            .setMessage("Сделай скрин этого окна и отправь разработчику:\n\n$crash")
+            .setPositiveButton("Скопировать") { _, _ ->
+                val cm = getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("pix crash", crash))
+                toast("Скопировано — вставь в чат")
+            }
+            .setNegativeButton("Закрыть", null)
             .show()
     }
 

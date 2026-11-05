@@ -8,6 +8,17 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // «чёрный ящик»: запоминаем причину падения, чтобы показать её при следующем запуске
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try {
+                val trace = android.util.Log.getStackTraceString(e).take(2500)
+                getSharedPreferences("pix", MODE_PRIVATE).edit()
+                    .putString("lastCrash", "${java.util.Date()} [${t.name}]\n$trace").commit()
+            } catch (_: Exception) {
+            }
+            prev?.uncaughtException(t, e)
+        }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CH_SERVICE, "Пикс на экране", NotificationManager.IMPORTANCE_MIN)
