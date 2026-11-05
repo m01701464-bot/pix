@@ -99,14 +99,20 @@ object Store {
         get() = p.getInt("cooldownSec", 30)
         set(v) = p.edit().putInt("cooldownSec", v).apply()
 
-    /** Отвечать самому, если хозяин молчит silenceMin минут */
+    /** Отвечать самому, если хозяин молчит silenceSec секунд */
     var silenceReply: Boolean
         get() = p.getBoolean("silenceReply", true)
         set(v) = p.edit().putBoolean("silenceReply", v).apply()
 
-    var silenceMin: Int
-        get() = p.getInt("silenceMin", 2)
-        set(v) = p.edit().putInt("silenceMin", v).apply()
+    /** Сколько секунд ждать ответа хозяина, прежде чем отвечать самому */
+    var silenceSec: Int
+        get() = if (p.contains("silenceSec")) p.getInt("silenceSec", 120) else p.getInt("silenceMin", 2) * 60
+        set(v) = p.edit().putInt("silenceSec", v).apply()
+
+    fun silenceText(): String {
+        val s = silenceSec
+        return if (s % 60 == 0) "${s / 60} мин." else "$s сек."
+    }
 
     var replyGroups: Boolean
         get() = p.getBoolean("replyGroups", false)

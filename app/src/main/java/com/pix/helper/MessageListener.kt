@@ -51,7 +51,8 @@ class MessageListener : NotificationListenerService() {
         private val userActedAt = ConcurrentHashMap<String, Long>()
         private val keyConv = ConcurrentHashMap<String, String>()
         private val seen = LinkedHashMap<String, Long>()
-        private val exec = Executors.newSingleThreadExecutor()
+        // несколько потоков — один медленный ответ не задерживает остальные
+        private val exec = Executors.newFixedThreadPool(3)
 
         fun sendReply(ctx: Context, action: Notification.Action, text: String): Boolean {
             val inputs = action.remoteInputs ?: return false
@@ -179,12 +180,28 @@ class MessageListener : NotificationListenerService() {
         }
     }
 
+    private var wake: android.os.PowerManager.WakeLock? = null
+
+    /** Не даём процессору уснуть, пока ждём таймер или пишем ответ (иначе таймер «замирает»). */
+    private fun keepAwake(ms: Long) {
+        try {
+            val w = wake ?: (getSystemService(POWER_SERVICE) as android.os.PowerManager)
+                .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pix:reply").also {
+                    it.setReferenceCounted(false)
+                    wake = it
+                }
+            w.acquire(ms)
+        } catch (_: Exception) {
+        }
+    }
+
     private fun startReply(pkg: String, app: String, conv: String, msg: Parsed, action: Notification.Action, mode: String) {
         val now = System.currentTimeMillis()
         val last = lastReplyAt[conv] ?: 0L
         // в режиме «Я занят» не частим; в режиме тишины пауза в N минут уже сама ограничивает частоту
         if (mode == "busy" && now - last < Store.cooldownSec * 1_000L) return
         lastReplyAt[conv] = now
+        keepAwake(120_000L)
         exec.execute { autoReply(pkg, app, conv, msg, action, mode) }
     }
 
@@ -200,7 +217,8 @@ class MessageListener : NotificationListenerService() {
         val task = Runnable { fire(conv) }
         p.task = task
         pending[conv] = p
-        main.postDelayed(task, Store.silenceMin * 60_000L)
+        keepAwake(Store.silenceSec * 1_000L + 90_000L)
+        main.postDelayed(task, Store.silenceSec * 1_000L)
     }
 
     private fun cancelPending(conv: String, reason: String?) {
@@ -362,7 +380,7 @@ class MessageListener : NotificationListenerService() {
             "Служебно (собеседнику не сообщать): $owner сейчас не у телефона" +
                 (if (Store.busyUntil > 0) " примерно до ${Store.time(Store.busyUntil)}" else "") + "."
         } else {
-            "Служебно (собеседнику не сообщать): $owner не ответил ${Store.silenceMin} мин., поэтому отвечаешь ты."
+            "Служебно (собеседнику не сообщать): $owner не ответил ${Store.silenceText()}, поэтому отвечаешь ты."
         }
         return """Ты ведёшь переписку от лица человека по имени $owner — пишешь так, будто это он сам. Сейчас $now.
 $situation

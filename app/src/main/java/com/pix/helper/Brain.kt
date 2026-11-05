@@ -11,9 +11,10 @@ object Brain {
 
     fun simple(system: String, user: String, maxTokens: Int, reply: Boolean): String {
         return if (gemini()) {
-            val model = if (reply) Store.gReplyModel else Store.gChatModel
-            // у Gemini в лимит входят и «размышления», поэтому запас побольше
-            Gemini.simple(model, system, user, maxOf(maxTokens, 2048))
+            // автоответы тоже идут через умную модель, но с короткими «размышлениями» — так и толково, и быстро;
+            // если она занята, Gemini.callSmart сам переключится на лёгкую
+            val model = Store.gChatModel
+            Gemini.simple(model, system, user, maxOf(maxTokens, 2048), fast = reply)
         } else {
             val model = if (reply) Store.replyModel else Store.chatModel
             val resp = Claude.call(

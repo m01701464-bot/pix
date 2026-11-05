@@ -15,14 +15,33 @@ object Gemini {
         val keyProblem: Boolean get() = (message ?: "").contains("ключ", ignoreCase = true)
     }
 
-    fun call(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int): JSONObject {
+    /** Модели, которым не понравилась настройка «думать коротко» — больше её не шлём */
+    private val noThinkingCfg = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    fun call(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int, fast: Boolean = false): JSONObject {
+        val m = model.trim()
+        val useThinkCfg = fast && m.startsWith("gemini-3") && m !in noThinkingCfg
+        try {
+            return callRaw(m, system, contents, tools, maxTokens, useThinkCfg)
+        } catch (e: ApiError) {
+            if (useThinkCfg && (e.message ?: "").contains("thinking", ignoreCase = true)) {
+                noThinkingCfg.add(m)
+                return callRaw(m, system, contents, tools, maxTokens, false)
+            }
+            throw e
+        }
+    }
+
+    private fun callRaw(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int, thinkLow: Boolean): JSONObject {
         val key = Store.geminiKey.trim()
         if (key.isEmpty()) throw ApiError("Не задан ключ Gemini — открой Пикса и вставь его в настройках")
 
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
             .put("contents", contents)
-            .put("generationConfig", JSONObject().put("maxOutputTokens", maxTokens))
+            .put("generationConfig", JSONObject().put("maxOutputTokens", maxTokens).also {
+                if (thinkLow) it.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+            })
         if (tools != null && tools.length() > 0) {
             body.put("tools", JSONArray().put(JSONObject().put("functionDeclarations", convertTools(tools))))
         }
@@ -116,7 +135,7 @@ object Gemini {
     }
 
     /** Пробует указанную модель, а если её нет или она платная — запасную. */
-    fun callSmart(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int, attempts: Int = 2): JSONObject {
+    fun callSmart(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int, attempts: Int = 2, fast: Boolean = false): JSONObject {
         // основная модель → вторая модель из настроек → запасной «последний Flash»
         val models = LinkedHashSet<String>()
         models.add(model.trim())
@@ -127,7 +146,7 @@ object Gemini {
             if (m.isEmpty()) continue
             for (attempt in 0 until attempts) {
                 try {
-                    return call(m, system, contents, tools, maxTokens)
+                    return call(m, system, contents, tools, maxTokens, fast)
                 } catch (e: ApiError) {
                     last = e
                     if (e.tryNextModel) break
@@ -161,11 +180,11 @@ object Gemini {
     fun chatText(model: String, system: String, contents: JSONArray, maxTokens: Int): String =
         textOf(content(callSmart(model, system, contents, null, maxTokens)))
 
-    fun simple(model: String, system: String, user: String, maxTokens: Int): String {
+    fun simple(model: String, system: String, user: String, maxTokens: Int, fast: Boolean = false): String {
         val contents = JSONArray().put(
             JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", user)))
         )
-        val resp = callSmart(model, system, contents, null, maxTokens)
+        val resp = callSmart(model, system, contents, null, maxTokens, fast = fast)
         return textOf(content(resp))
     }
 
