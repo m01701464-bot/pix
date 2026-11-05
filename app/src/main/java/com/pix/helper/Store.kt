@@ -49,6 +49,23 @@ object Store {
     private fun put(k: String, v: String) = p.edit().putString(k, v).apply()
 
     // ---------- Настройки ----------
+    /** "gemini" (бесплатно, по умолчанию) или "claude" */
+    var provider: String
+        get() = s("provider", "gemini")
+        set(v) = put("provider", v)
+
+    var geminiKey: String
+        get() = s("geminiKey", "")
+        set(v) = put("geminiKey", v)
+
+    var gChatModel: String
+        get() = s("gChatModel", "gemini-3.8-flash")
+        set(v) = put("gChatModel", v)
+
+    var gReplyModel: String
+        get() = s("gReplyModel", "gemini-3.5-flash-lite")
+        set(v) = put("gReplyModel", v)
+
     var apiKey: String
         get() = s("apiKey", "")
         set(v) = put("apiKey", v)

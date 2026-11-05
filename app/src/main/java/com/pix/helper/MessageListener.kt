@@ -281,12 +281,8 @@ class MessageListener : NotificationListenerService() {
             val prompt = "Мессенджер: $app\nЧат: ${msg.chat}" + (if (msg.group) " (групповой)" else "") +
                 "\n\nПереписка (последнее сообщение — новое):\n$hist\n\n" +
                 "Ответь по существу на последние сообщения от ${msg.sender}. Только текст ответа или SKIP."
-            val resp = Claude.call(
-                Store.replyModel, autoSystem(mode),
-                JSONArray().put(JSONObject().put("role", "user").put("content", prompt)),
-                null, 300
-            )
-            val reply = Claude.textOf(resp).trim().trim('"', '«', '»').trim()
+            val reply = Brain.simple(autoSystem(mode), prompt, 300, reply = true)
+                .trim().trim('"', '«', '»').trim()
             if (reply.isEmpty() || reply.startsWith("SKIP", ignoreCase = true)) {
                 Store.log("skip", "${msg.chat}: не стал отвечать на «${msg.text.take(50)}»")
                 lastReplyAt.remove(conv)

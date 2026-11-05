@@ -41,6 +41,14 @@ class MainActivity : Activity() {
     private lateinit var keyResult: TextView
     private val permRows = ArrayList<Pair<TextView, () -> Boolean>>()
 
+    private lateinit var fGKey: EditText
+    private lateinit var fGChat: EditText
+    private lateinit var fGReply: EditText
+    private lateinit var btnGemini: Button
+    private lateinit var btnClaude: Button
+    private lateinit var geminiBox: LinearLayout
+    private lateinit var claudeBox: LinearLayout
+    private var provider = Store.provider
     private lateinit var fKey: EditText
     private lateinit var fChatModel: EditText
     private lateinit var fReplyModel: EditText
@@ -139,11 +147,32 @@ class MainActivity : Activity() {
         permCard.addView(button("О приложении (ограниченные настройки)") { openAppDetails() }, fullWidth(top = 8))
 
         // Claude API
-        val apiCard = card(root, "Мозги: Claude API")
-        apiCard.addView(text("Ключ создаётся на console.anthropic.com → API Keys. Хранится только на телефоне.", 13f, cSub))
-        fKey = field(apiCard, "API-ключ", Store.apiKey, "sk-ant-…", password = true)
-        fChatModel = field(apiCard, "Модель для поручений", Store.chatModel, "claude-sonnet-5-5")
-        fReplyModel = field(apiCard, "Модель для автоответов (быстрая и дешёвая)", Store.replyModel, "claude-haiku-5-5")
+        val apiCard = card(root, "Мозги Пикса")
+        btnGemini = button("Gemini — бесплатно") { setProvider("gemini") }
+        btnClaude = button("Claude — платно") { setProvider("claude") }
+        apiCard.addView(row(btnGemini, btnClaude))
+
+        geminiBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        apiCard.addView(geminiBox, fullWidth(top = 6))
+        geminiBox.addView(text("Бесплатный ключ без карты: открой aistudio.google.com → «Get API key» → «Create API key», скопируй и вставь сюда.", 13f, cSub), fullWidth(top = 6))
+        geminiBox.addView(button("Открыть Google AI Studio") {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey")))
+            } catch (e: Exception) {
+                toast("Открой aistudio.google.com/apikey в браузере")
+            }
+        }, fullWidth(top = 8))
+        fGKey = field(geminiBox, "Ключ Gemini", Store.geminiKey, "AIza…", password = true)
+        fGChat = field(geminiBox, "Модель для поручений", Store.gChatModel, "gemini-3.8-flash")
+        fGReply = field(geminiBox, "Модель для автоответов", Store.gReplyModel, "gemini-3.5-flash-lite")
+
+        claudeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        apiCard.addView(claudeBox, fullWidth(top = 6))
+        claudeBox.addView(text("Ключ: console.anthropic.com → API Keys (нужно пополнить баланс).", 13f, cSub), fullWidth(top = 6))
+        fKey = field(claudeBox, "Ключ Claude", Store.apiKey, "sk-ant-…", password = true)
+        fChatModel = field(claudeBox, "Модель для поручений", Store.chatModel, "claude-sonnet-5-5")
+        fReplyModel = field(claudeBox, "Модель для автоответов", Store.replyModel, "claude-haiku-5-5")
+        applyProviderUi()
         keyResult = text("", 13f, cSub)
         apiCard.addView(button("Проверить ключ") { testKey() }, fullWidth(top = 10))
         apiCard.addView(keyResult)
@@ -224,7 +253,9 @@ class MainActivity : Activity() {
         save()
         Store.setBusy(true, minutes)
         if (!listenerEnabled()) toast("Дай доступ к уведомлениям, иначе Пикс не увидит сообщения")
-        if (Store.apiKey.isBlank()) toast("Вставь API-ключ Claude")
+        if ((Brain.gemini() && Store.geminiKey.isBlank()) || (!Brain.gemini() && Store.apiKey.isBlank())) {
+            toast("Вставь ключ ${Brain.name()} в блоке «Мозги Пикса»")
+        }
         refreshDynamic()
     }
 
@@ -258,6 +289,10 @@ class MainActivity : Activity() {
     }
 
     private fun save() {
+        Store.provider = provider
+        Store.geminiKey = fGKey.text.toString().trim()
+        Store.gChatModel = fGChat.text.toString().trim().ifEmpty { "gemini-3.8-flash" }
+        Store.gReplyModel = fGReply.text.toString().trim().ifEmpty { "gemini-3.5-flash-lite" }
         Store.apiKey = fKey.text.toString().trim()
         Store.chatModel = fChatModel.text.toString().trim().ifEmpty { "claude-sonnet-5-5" }
         Store.replyModel = fReplyModel.text.toString().trim().ifEmpty { "claude-haiku-5-5" }
@@ -309,18 +344,28 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun setProvider(p: String) {
+        provider = p
+        applyProviderUi()
+        save()
+    }
+
+    private fun applyProviderUi() {
+        val g = provider != "claude"
+        styleButton(btnGemini, g)
+        styleButton(btnClaude, !g)
+        geminiBox.visibility = if (g) View.VISIBLE else View.GONE
+        claudeBox.visibility = if (g) View.GONE else View.VISIBLE
+    }
+
     private fun testKey() {
         save()
         keyResult.text = "Проверяю…"
         keyResult.setTextColor(cSub)
         Thread {
             val res = try {
-                val r = Claude.call(
-                    Store.chatModel, "Ответь одним коротким предложением.",
-                    JSONArray().put(JSONObject().put("role", "user").put("content", "Поздоровайся как пиксельный помощник Пикс.")),
-                    null, 60
-                )
-                true to ("✅ Работает: " + Claude.textOf(r))
+                val r = Brain.simple("Ответь одним коротким предложением.", "Поздоровайся как Пикс — пиксельный глаз-помощник.", 60, reply = false)
+                true to ("✅ ${Brain.name()} работает: " + r)
             } catch (e: Exception) {
                 false to ("⚠️ " + (e.message ?: e.toString()))
             }

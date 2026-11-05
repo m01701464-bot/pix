@@ -33,6 +33,55 @@ object Agent {
     }
 
     private fun run(userText: String): String {
+        val finalText = (if (Brain.gemini()) runGemini(userText) else runClaude(userText)).ifBlank { "Готово ✅" }
+        synchronized(history) {
+            history.add("user" to userText)
+            history.add("assistant" to finalText)
+            while (history.size > 30) history.removeAt(0)
+        }
+        return finalText
+    }
+
+    private fun runGemini(userText: String): String {
+        fun textPart(t: String) = JSONArray().put(JSONObject().put("text", t))
+        val contents = JSONArray()
+        synchronized(history) {
+            for ((role, text) in history.takeLast(16)) {
+                contents.put(JSONObject().put("role", if (role == "assistant") "model" else "user").put("parts", textPart(text)))
+            }
+        }
+        contents.put(JSONObject().put("role", "user").put("parts", textPart(userText)))
+
+        var finalText = ""
+        for (step in 0 until 8) {
+            val resp = Gemini.callSmart(Store.gChatModel, systemPrompt(), contents, Tools.defs(), 4096)
+            val content = Gemini.content(resp) ?: break
+            if (!content.has("role")) content.put("role", "model")
+            contents.put(content)
+            val text = Gemini.textOf(content)
+            if (text.isNotBlank()) finalText = text
+
+            val parts = content.optJSONArray("parts") ?: JSONArray()
+            val responses = JSONArray()
+            for (i in 0 until parts.length()) {
+                val fc = parts.optJSONObject(i)?.optJSONObject("functionCall") ?: continue
+                val name = fc.optString("name")
+                val out = try {
+                    Tools.run(name, fc.optJSONObject("args") ?: JSONObject())
+                } catch (e: Exception) {
+                    "Ошибка: ${e.message}"
+                }
+                val fr = JSONObject().put("name", name).put("response", JSONObject().put("result", out))
+                if (fc.has("id")) fr.put("id", fc.optString("id"))
+                responses.put(JSONObject().put("functionResponse", fr))
+            }
+            if (responses.length() == 0) break
+            contents.put(JSONObject().put("role", "user").put("parts", responses))
+        }
+        return finalText
+    }
+
+    private fun runClaude(userText: String): String {
         val msgs = JSONArray()
         synchronized(history) {
             for ((role, text) in history.takeLast(16)) {
@@ -69,12 +118,6 @@ object Agent {
             msgs.put(JSONObject().put("role", "user").put("content", results))
         }
 
-        if (finalText.isBlank()) finalText = "Готово ✅"
-        synchronized(history) {
-            history.add("user" to userText)
-            history.add("assistant" to finalText)
-            while (history.size > 30) history.removeAt(0)
-        }
         return finalText
     }
 
