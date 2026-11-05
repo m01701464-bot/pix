@@ -173,6 +173,9 @@ class MessageListener : NotificationListenerService() {
             // режим «Я занят» — отвечаем сразу
             main.post { cancelPending(conv, null) }
             startReply(pkg, app, conv, msg, action, "busy")
+        } else if (Store.silenceReply && Store.silenceSec <= 0) {
+            // ожидание 0 секунд — отвечаем сразу
+            startReply(pkg, app, conv, msg, action, "instant")
         } else if (Store.silenceReply) {
             // ждём, ответит ли хозяин сам
             val key = sbn.key
@@ -379,6 +382,8 @@ class MessageListener : NotificationListenerService() {
         val situation = if (mode == "busy") {
             "Служебно (собеседнику не сообщать): $owner сейчас не у телефона" +
                 (if (Store.busyUntil > 0) " примерно до ${Store.time(Store.busyUntil)}" else "") + "."
+        } else if (mode == "instant") {
+            "Служебно (собеседнику не сообщать): $owner поручил тебе отвечать за него сразу."
         } else {
             "Служебно (собеседнику не сообщать): $owner не ответил ${Store.silenceText()}, поэтому отвечаешь ты."
         }

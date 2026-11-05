@@ -191,7 +191,7 @@ class MainActivity : Activity() {
         // Как отвечать
         val replyCard = card(root, "Как отвечать за меня")
         cbSilence = checkbox(replyCard, "Отвечать самому, если я не ответил вовремя", Store.silenceReply)
-        fSilence = field(replyCard, "Через сколько секунд молчания отвечать", Store.silenceSec.toString(), "120", number = true)
+        fSilence = field(replyCard, "Через сколько секунд молчания отвечать (0 — сразу)", Store.silenceSec.toString(), "0", number = true)
         replyCard.addView(text("Если за это время ты открыл чат или ответил сам — Пикс не вмешивается.", 12f, cSub))
         fName = field(replyCard, "Как тебя зовут", Store.ownerName, "Например: Маша")
         fPersona = field(replyCard, "Инструкция для Пикса", Store.persona, "", multiline = true)
@@ -357,7 +357,7 @@ class MainActivity : Activity() {
         Store.cooldownSec = fCooldown.text.toString().trim().toIntOrNull()?.coerceIn(0, 86_400) ?: 30
         Store.replyGroups = cbGroups.isChecked
         Store.silenceReply = cbSilence.isChecked
-        Store.silenceSec = fSilence.text.toString().trim().toIntOrNull()?.coerceIn(10, 7200) ?: 120
+        Store.silenceSec = fSilence.text.toString().trim().toIntOrNull()?.coerceIn(0, 7200) ?: 120
         Store.notifyUrgent = cbUrgent.isChecked
         Store.styleSamples = fStyle.text.toString().trim()
         Store.learnStyle = cbLearn.isChecked

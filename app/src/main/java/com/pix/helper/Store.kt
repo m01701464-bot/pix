@@ -111,7 +111,7 @@ object Store {
 
     fun silenceText(): String {
         val s = silenceSec
-        return if (s % 60 == 0) "${s / 60} мин." else "$s сек."
+        return if (s <= 0) "сразу" else if (s % 60 == 0) "${s / 60} мин." else "$s сек."
     }
 
     var replyGroups: Boolean
