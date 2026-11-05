@@ -53,8 +53,19 @@ object Brain {
         throw first ?: Exception("ИИ не ответил")
     }
 
-    fun simple(system: String, user: String, maxTokens: Int, reply: Boolean): String =
-        rotate { p -> simpleWith(p, system, user, maxTokens, reply) }
+    /**
+     * light = true — простая задача: идёт на лёгкую модель с большими лимитами (Flash-Lite),
+     * сложное — на умную (Flash). Если у одной кончился лимит, Gemini сам возьмёт другую,
+     * а потом очередь перейдёт к остальным ИИ.
+     */
+    fun simple(system: String, user: String, maxTokens: Int, reply: Boolean, light: Boolean = false): String =
+        rotate { p -> simpleWith(p, system, user, maxTokens, reply, light) }
+
+    /** Простое ли входящее сообщение (короткое, без вопроса) */
+    fun isSimple(text: String): Boolean {
+        val t = text.trim()
+        return t.length <= 50 && !t.contains('?') && t.split(Regex("\\s+")).size <= 8
+    }
 
     /** Короткая дружеская реплика о том, что сейчас на экране. Формат ответа: «эмоция|реплика» или SKIP. */
     fun comment(app: String, screen: String, typed: String, imageB64: String?): String {
@@ -82,15 +93,16 @@ $character
             "Текст на экране:\n${screen.take(1500)}"
         if (imageB64 != null && Store.geminiKey.isNotBlank()) {
             try {
-                // картинки умеет смотреть Gemini; если не вышло — дальше просто по тексту
-                return Gemini.simpleImage(Store.gChatModel, sys, user, imageB64, 500)
+                // картинки умеет смотреть Gemini; при частых репликах берём лёгкую модель, чтобы хватало лимитов
+                val model = if (Store.buddyLevel >= 3) Store.gReplyModel else Store.gChatModel
+                return Gemini.simpleImage(model, sys, user, imageB64, 500)
             } catch (_: Exception) {
             }
         }
-        return simple(sys, user, 300, reply = true)
+        return simple(sys, user, 300, reply = true, light = true)
     }
 
-    fun simpleWith(provider: String, system: String, user: String, maxTokens: Int, reply: Boolean): String {
+    fun simpleWith(provider: String, system: String, user: String, maxTokens: Int, reply: Boolean, light: Boolean = false): String {
         return when (provider) {
             "mistral" -> Mistral.chat(system, listOf("user" to user), maxOf(maxTokens, 512))
             "openrouter" -> OpenRouter.chat(system, listOf("user" to user), maxOf(maxTokens, 1024))
@@ -104,7 +116,7 @@ $character
                 Claude.textOf(resp)
             }
             // умная модель с короткими «размышлениями» — и толково, и быстро
-            else -> Gemini.simple(Store.gChatModel, system, user, maxOf(maxTokens, 2048), fast = reply)
+            else -> Gemini.simple(if (light) Store.gReplyModel else Store.gChatModel, system, user, maxOf(maxTokens, 2048), fast = reply)
         }
     }
 

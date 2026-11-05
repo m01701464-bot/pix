@@ -443,7 +443,7 @@ class MessageListener : NotificationListenerService() {
                 "\n\nНовое сообщение от ${msg.sender}: ${msg.text}" +
                 "\n\nПомни: ты видишь только часть диалога — сообщения, которые хозяин писал внутри приложения, сюда не попадают." +
                 "\nОтветь по существу. Только текст ответа или SKIP."
-            val reply = Brain.simple(autoSystem(mode, msg), prompt, 300, reply = true)
+            val reply = Brain.simple(autoSystem(mode, msg), prompt, 300, reply = true, light = Brain.isSimple(msg.text))
                 .trim().trim('"', '«', '»').trim()
             if (reply.isEmpty() || reply.startsWith("SKIP", ignoreCase = true)) {
                 Store.log("skip", "${msg.chat}: не стал отвечать на «${msg.text.take(50)}»")
