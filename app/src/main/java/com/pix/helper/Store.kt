@@ -307,7 +307,7 @@ object Store {
                 .put("chat", chat).put("sender", sender).put("text", text)
                 .put("group", group).put("seen", seen)
         )
-        saveArr("inbox", a, 300)
+        saveArr("inbox", a, 800)
     }
 
     @Synchronized
@@ -322,7 +322,7 @@ object Store {
             for (o in all) o.put("seen", true)
             val n = JSONArray()
             all.forEach { n.put(it) }
-            saveArr("inbox", n, 300)
+            saveArr("inbox", n, 800)
         }
         return picked
     }

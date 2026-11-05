@@ -29,7 +29,10 @@ class MessageListener : NotificationListenerService() {
 
     class Target(val pkg: String, val app: String, val chat: String, val action: Notification.Action, val t: Long)
 
-    private class Parsed(val chat: String, val sender: String, val text: String, val group: Boolean, val self: Boolean = false)
+    private class Parsed(
+        val chat: String, val sender: String, val text: String, val group: Boolean,
+        val self: Boolean = false, val thread: List<String> = emptyList()
+    )
 
     /** Ждём, ответит ли хозяин сам; если нет — отвечает Пикс. */
     private class Pending(val key: String, val pkg: String, val app: String, var msg: Parsed, var action: Notification.Action, val since: Long) {
@@ -241,7 +244,23 @@ class MessageListener : NotificationListenerService() {
         var sender = title
         val self = selfName(ex)
 
+        // вся лента сообщений из уведомления (старые + новые), чтобы понимать контекст
+        val thread = ArrayList<String>()
+        fun collect(a: Array<out android.os.Parcelable>?) {
+            if (a == null) return
+            for (item in a) {
+                val b = item as? Bundle ?: continue
+                val t = b.getCharSequence("text")?.toString()
+                if (t.isNullOrBlank()) continue
+                val snd = b.getCharSequence("sender")?.toString() ?: personName(b.get("sender_person"))
+                val who = if (snd == null || (self != null && snd == self)) "Я" else snd
+                thread.add("$who: ${t.trim()}")
+            }
+        }
+        collect(ex.getParcelableArray("android.messages.historic"))
+
         val arr = ex.getParcelableArray(Notification.EXTRA_MESSAGES)
+        collect(arr)
         if (arr != null && arr.isNotEmpty()) {
             val last = arr[arr.size - 1] as? Bundle
             if (last != null) {
@@ -251,7 +270,7 @@ class MessageListener : NotificationListenerService() {
                 if (s == null || (self != null && s == self)) {
                     // последнее сообщение в чате — от самого хозяина
                     val chat0 = convTitle ?: title
-                    return if (chat0.isBlank()) null else Parsed(chat0, "Я", text.trim(), convTitle != null, self = true)
+                    return if (chat0.isBlank()) null else Parsed(chat0, "Я", text.trim(), convTitle != null, self = true, thread = thread)
                 }
                 sender = s
             }
@@ -260,7 +279,7 @@ class MessageListener : NotificationListenerService() {
         val chat = convTitle ?: title
         if (chat.isBlank()) return null
         val group = ex.getBoolean("android.isGroupConversation", false) || convTitle != null
-        return Parsed(chat, sender.ifBlank { chat }, text.trim(), group)
+        return Parsed(chat, sender.ifBlank { chat }, text.trim(), group, thread = thread)
     }
 
     @Suppress("DEPRECATION")
@@ -292,11 +311,15 @@ class MessageListener : NotificationListenerService() {
         }
         Bus.emit(Event("thinking"))
         try {
-            val hist = Store.chatHistory(pkg, msg.chat, 12)
+            val hist = Store.chatHistory(pkg, msg.chat, 30)
                 .joinToString("\n") { "${it.optString("sender")}: ${it.optString("text")}" }
+            val notif = msg.thread.takeLast(20).joinToString("\n")
             val prompt = "Мессенджер: $app\nЧат: ${msg.chat}" + (if (msg.group) " (групповой)" else "") +
-                "\n\nПереписка (последнее сообщение — новое):\n$hist\n\n" +
-                "Ответь по существу на последние сообщения от ${msg.sender}. Только текст ответа или SKIP."
+                "\n\nЧто ты успел увидеть в этом чате (по уведомлениям, старое сверху):\n$hist" +
+                (if (notif.isNotBlank()) "\n\nЛента из текущего уведомления (самое свежее внизу):\n$notif" else "") +
+                "\n\nНовое сообщение от ${msg.sender}: ${msg.text}" +
+                "\n\nПомни: ты видишь только часть диалога — сообщения, которые хозяин писал внутри приложения, сюда не попадают." +
+                "\nОтветь по существу. Только текст ответа или SKIP."
             val reply = Brain.simple(autoSystem(mode, msg), prompt, 300, reply = true)
                 .trim().trim('"', '«', '»').trim()
             if (reply.isEmpty() || reply.startsWith("SKIP", ignoreCase = true)) {
@@ -351,6 +374,7 @@ ${personBlock(msg)}${styleBlock(owner)}
 - Пиши как живой человек в мессенджере: коротко (1–3 предложения), на языке и в тоне собеседника, без канцелярита.
 - Общие вопросы (факты, советы, объяснения, «как сделать», мнение о фильме/игре и т.п.) — отвечай сам, уверенно и полезно.
 - Когда без $owner не обойтись: личные факты, которых нет в переписке и пожеланиях (где он, его планы, его решения), встречи, деньги, покупки, обещания. Не выдумывай и не соглашайся за него — ответь по теме, а это пообещай уточнить.
+- Ты видишь не всю переписку. Если сообщение ссылается на то, чего нет в видимом куске («ну так что?», «а ты?», «как тебе?», «скинь его»), и смысл неясен — не угадывай и не выдумывай: задай короткий естественный уточняющий вопрос («ты про что именно?») или выведи SKIP.
 - Никогда не сообщай коды, пароли, адреса, номера карт и другие личные данные.
 - Если это реклама, рассылка, код подтверждения, системное уведомление или ответ не нужен («ок», «спасибо», стикер) — выведи ровно SKIP.
 - Выводи только текст ответа, без кавычек и пояснений."""
