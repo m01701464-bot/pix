@@ -10,7 +10,10 @@ object Gemini {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
     const val FALLBACK_MODEL = "gemini-flash-latest"
 
-    class ApiError(msg: String, val tryNextModel: Boolean = false, val retryable: Boolean = false) : Exception(msg)
+    class ApiError(msg: String, val tryNextModel: Boolean = false, val retryable: Boolean = false) : Exception(msg) {
+        /** Ошибка ключа — тут обходные пути не помогут */
+        val keyProblem: Boolean get() = (message ?: "").contains("ключ", ignoreCase = true)
+    }
 
     fun call(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int): JSONObject {
         val key = Store.geminiKey.trim()
@@ -58,7 +61,8 @@ object Gemini {
                     code == 404 -> ApiError("Модель $model недоступна", tryNextModel = true)
                     code == 429 && msg.contains("limit: 0") -> ApiError("Модель $model не входит в бесплатный тариф", tryNextModel = true)
                     code == 429 -> ApiError("Лимит бесплатного тарифа на сейчас исчерпан — подожди минуту", retryable = true)
-                    code == 503 || code == 500 || code == 502 || code == 504 -> ApiError("Gemini перегружен, попробуй через минуту", retryable = true)
+                    code == 503 -> ApiError("Gemini перегружен, попробуй через минуту", retryable = true)
+                    code == 500 || code == 502 || code == 504 -> ApiError("Сбой сервера Gemini $code: ${msg.take(120)}", retryable = true)
                     else -> ApiError("Ошибка Gemini $code: $msg")
                 }
             }
@@ -112,7 +116,7 @@ object Gemini {
     }
 
     /** Пробует указанную модель, а если её нет или она платная — запасную. */
-    fun callSmart(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int): JSONObject {
+    fun callSmart(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int, attempts: Int = 2): JSONObject {
         // основная модель → вторая модель из настроек → запасной «последний Flash»
         val models = LinkedHashSet<String>()
         models.add(model.trim())
@@ -121,14 +125,14 @@ object Gemini {
         var last: ApiError? = null
         for (m in models) {
             if (m.isEmpty()) continue
-            for (attempt in 0 until 2) {
+            for (attempt in 0 until attempts) {
                 try {
                     return call(m, system, contents, tools, maxTokens)
                 } catch (e: ApiError) {
                     last = e
                     if (e.tryNextModel) break
                     if (!e.retryable) throw e
-                    Thread.sleep(if (attempt == 0) 2_000L else 5_000L)
+                    if (attempt + 1 < attempts) Thread.sleep(if (attempt == 0) 2_000L else 5_000L)
                 }
             }
         }
@@ -152,6 +156,10 @@ object Gemini {
         }
         return sb.toString().trim()
     }
+
+    /** Обычный текстовый диалог без инструментов. */
+    fun chatText(model: String, system: String, contents: JSONArray, maxTokens: Int): String =
+        textOf(content(callSmart(model, system, contents, null, maxTokens)))
 
     fun simple(model: String, system: String, user: String, maxTokens: Int): String {
         val contents = JSONArray().put(

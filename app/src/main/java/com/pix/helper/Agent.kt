@@ -33,13 +33,102 @@ object Agent {
     }
 
     private fun run(userText: String): String {
-        val finalText = (if (Brain.gemini()) runGemini(userText) else runClaude(userText)).ifBlank { "Готово ✅" }
+        val finalText = (if (Brain.gemini()) runGeminiSafe(userText) else runClaude(userText)).ifBlank { "Готово ✅" }
         synchronized(history) {
             history.add("user" to userText)
             history.add("assistant" to finalText)
             while (history.size > 30) history.removeAt(0)
         }
         return finalText
+    }
+
+    /** Сначала «родные» инструменты Gemini, при сбое — текстовые команды. */
+    private fun runGeminiSafe(userText: String): String {
+        return try {
+            runGemini(userText)
+        } catch (e: Gemini.ApiError) {
+            if (e.keyProblem) throw e
+            runGeminiText(userText)
+        } catch (e: org.json.JSONException) {
+            runGeminiText(userText)
+        }
+    }
+
+    private val jsonRe = Regex("\\{[\\s\\S]*\\}")
+
+    /** Запасной режим: модель пишет команду как JSON-текст, Пикс её выполняет. */
+    private fun runGeminiText(userText: String): String {
+        fun textPart(t: String) = JSONArray().put(JSONObject().put("text", t))
+        val sys = systemPrompt() + "\n\n" + toolsAsText()
+        val contents = JSONArray()
+        synchronized(history) {
+            for ((role, text) in history.takeLast(16)) {
+                contents.put(JSONObject().put("role", if (role == "assistant") "model" else "user").put("parts", textPart(text)))
+            }
+        }
+        contents.put(JSONObject().put("role", "user").put("parts", textPart(userText)))
+
+        var answer = ""
+        for (step in 0 until 6) {
+            val out = Gemini.chatText(Store.gChatModel, sys, contents, 2048).trim()
+            val call = parseCommand(out)
+            if (call == null) {
+                answer = out
+                break
+            }
+            val name = call.optString("tool")
+            val result = try {
+                Tools.run(name, call.optJSONObject("args") ?: JSONObject())
+            } catch (e: Exception) {
+                "Ошибка: ${e.message}"
+            }
+            contents.put(JSONObject().put("role", "model").put("parts", textPart(out)))
+            contents.put(
+                JSONObject().put("role", "user").put(
+                    "parts",
+                    textPart("[Результат $name]\n$result\n\nЕсли нужно ещё действие — снова одна строка JSON. Иначе коротко ответь хозяину обычным текстом.")
+                )
+            )
+            answer = result
+        }
+        return answer
+    }
+
+    private fun parseCommand(text: String): JSONObject? {
+        val clean = text.replace("```json", "").replace("```", "").trim()
+        if (!clean.contains("\"tool\"")) return null
+        val m = jsonRe.find(clean) ?: return null
+        return try {
+            val o = JSONObject(m.value)
+            if (o.optString("tool").isNotEmpty()) o else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun toolsAsText(): String {
+        val defs = Tools.defs()
+        val sb = StringBuilder()
+        sb.append("ИНСТРУМЕНТЫ. Чтобы выполнить действие, ответь ТОЛЬКО одной строкой JSON без пояснений, например:\n")
+        sb.append("{\"tool\":\"set_reminder\",\"args\":{\"text\":\"позвонить маме\",\"minutes\":20}}\n")
+        sb.append("Я выполню его и пришлю результат. Если действие не нужно — отвечай обычным текстом.\nДоступные инструменты:\n")
+        for (i in 0 until defs.length()) {
+            val t = defs.optJSONObject(i) ?: continue
+            sb.append("- ").append(t.optString("name")).append(": ").append(t.optString("description"))
+            val props = t.optJSONObject("input_schema")?.optJSONObject("properties")
+            if (props != null && props.length() > 0) {
+                val keys = props.keys()
+                val parts = ArrayList<String>()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val pr = props.optJSONObject(k)
+                    parts.add("$k (${pr?.optString("type")}): ${pr?.optString("description")}")
+                }
+                sb.append(" Аргументы: ").append(parts.joinToString("; "))
+            }
+            sb.append("\n")
+        }
+        return sb.toString()
     }
 
     private fun runGemini(userText: String): String {
@@ -54,7 +143,7 @@ object Agent {
 
         var finalText = ""
         for (step in 0 until 8) {
-            val resp = Gemini.callSmart(Store.gChatModel, systemPrompt(), contents, Tools.defs(), 4096)
+            val resp = Gemini.callSmart(Store.gChatModel, systemPrompt(), contents, Tools.defs(), 4096, attempts = 1)
             val content = Gemini.content(resp) ?: break
             if (!content.has("role")) content.put("role", "model")
             contents.put(content)
