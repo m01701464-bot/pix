@@ -202,7 +202,7 @@ class MessageListener : NotificationListenerService() {
         val now = System.currentTimeMillis()
         val last = lastReplyAt[conv] ?: 0L
         // в режиме «Я занят» не частим; в режиме тишины пауза в N минут уже сама ограничивает частоту
-        if (mode == "busy" && now - last < Store.cooldownSec * 1_000L) return
+        if ((mode == "busy" || mode == "instant") && now - last < Store.cooldownSec * 1_000L) return
         lastReplyAt[conv] = now
         keepAwake(120_000L)
         exec.execute { autoReply(pkg, app, conv, msg, action, mode) }

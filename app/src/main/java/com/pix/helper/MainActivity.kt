@@ -196,7 +196,7 @@ class MainActivity : Activity() {
         fName = field(replyCard, "Как тебя зовут", Store.ownerName, "Например: Маша")
         fPersona = field(replyCard, "Инструкция для Пикса", Store.persona, "", multiline = true)
         fPrefix = field(replyCard, "Метка перед автоответом (пусто — без метки)", Store.prefix, "🤖")
-        fCooldown = field(replyCard, "В режиме «Я занят»: пауза между ответами в один чат, секунд", Store.cooldownSec.toString(), "30", number = true)
+        fCooldown = field(replyCard, "Пауза между ответами в один чат, секунд («Я занят» и мгновенный режим)", Store.cooldownSec.toString(), "30", number = true)
         cbGroups = checkbox(replyCard, "Отвечать и в групповых чатах", Store.replyGroups)
         cbUrgent = checkbox(replyCard, "Будить меня, если пишут «срочно»", Store.notifyUrgent)
 
