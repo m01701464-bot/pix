@@ -10,7 +10,7 @@ object Gemini {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
     const val FALLBACK_MODEL = "gemini-flash-latest"
 
-    class ApiError(msg: String, val tryNextModel: Boolean = false) : Exception(msg)
+    class ApiError(msg: String, val tryNextModel: Boolean = false, val retryable: Boolean = false) : Exception(msg)
 
     fun call(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int): JSONObject {
         val key = Store.geminiKey.trim()
@@ -57,8 +57,8 @@ object Gemini {
                     keyBad -> ApiError("Неверный ключ Gemini")
                     code == 404 -> ApiError("Модель $model недоступна", tryNextModel = true)
                     code == 429 && msg.contains("limit: 0") -> ApiError("Модель $model не входит в бесплатный тариф", tryNextModel = true)
-                    code == 429 -> ApiError("Лимит бесплатного тарифа на сейчас исчерпан — подожди минуту")
-                    code == 503 -> ApiError("Gemini перегружен, попробуй через минуту")
+                    code == 429 -> ApiError("Лимит бесплатного тарифа на сейчас исчерпан — подожди минуту", retryable = true)
+                    code == 503 || code == 500 || code == 502 || code == 504 -> ApiError("Gemini перегружен, попробуй через минуту", retryable = true)
                     else -> ApiError("Ошибка Gemini $code: $msg")
                 }
             }
@@ -72,7 +72,7 @@ object Gemini {
         is java.net.UnknownHostException -> ApiError("Нет интернета или не находится сервер Google")
         is java.net.SocketTimeoutException ->
             if ((e.message ?: "").contains("connect", true)) ApiError("Не могу подключиться к серверам Google — попробуй другой интернет (Wi-Fi / мобильный) или VPN")
-            else ApiError("Gemini слишком долго отвечает — попробуй ещё раз")
+            else ApiError("Gemini слишком долго отвечает — попробуй ещё раз", retryable = true)
         else -> ApiError("Сеть: ${e.message ?: e.javaClass.simpleName}")
     }
 
@@ -113,12 +113,26 @@ object Gemini {
 
     /** Пробует указанную модель, а если её нет или она платная — запасную. */
     fun callSmart(model: String, system: String, contents: JSONArray, tools: JSONArray?, maxTokens: Int): JSONObject {
-        return try {
-            call(model, system, contents, tools, maxTokens)
-        } catch (e: ApiError) {
-            if (e.tryNextModel && model.trim() != FALLBACK_MODEL) call(FALLBACK_MODEL, system, contents, tools, maxTokens)
-            else throw e
+        // основная модель → вторая модель из настроек → запасной «последний Flash»
+        val models = LinkedHashSet<String>()
+        models.add(model.trim())
+        models.add((if (model.contains("lite")) Store.gChatModel else Store.gReplyModel).trim())
+        models.add(FALLBACK_MODEL)
+        var last: ApiError? = null
+        for (m in models) {
+            if (m.isEmpty()) continue
+            for (attempt in 0 until 2) {
+                try {
+                    return call(m, system, contents, tools, maxTokens)
+                } catch (e: ApiError) {
+                    last = e
+                    if (e.tryNextModel) break
+                    if (!e.retryable) throw e
+                    Thread.sleep(if (attempt == 0) 2_000L else 5_000L)
+                }
+            }
         }
+        throw last ?: ApiError("Gemini не ответил")
     }
 
     fun content(resp: JSONObject): JSONObject? =

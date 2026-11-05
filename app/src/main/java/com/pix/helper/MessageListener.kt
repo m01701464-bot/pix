@@ -44,6 +44,9 @@ class MessageListener : NotificationListenerService() {
         val targets = ConcurrentHashMap<String, Target>()
         private val lastSent = ConcurrentHashMap<String, String>()
         private val lastReplyAt = ConcurrentHashMap<String, Long>()
+        /** когда хозяин сам открыл/ответил в чат */
+        private val userActedAt = ConcurrentHashMap<String, Long>()
+        private val keyConv = ConcurrentHashMap<String, String>()
         private val seen = LinkedHashMap<String, Long>()
         private val exec = Executors.newSingleThreadExecutor()
 
@@ -121,7 +124,9 @@ class MessageListener : NotificationListenerService() {
         val app = appLabel(this, pkg)
         val conv = "$pkg|${msg.chat}"
 
+        keyConv[sbn.key] = conv
         if (msg.self) {
+            if (lastSent[conv]?.trim() != msg.text.trim()) userActedAt[conv] = now
             // хозяин (или Пикс) уже написал в этот чат — ждать больше нечего
             main.post { cancelPending(conv, if (lastSent[conv]?.trim() == msg.text.trim()) null else "ты ответил сам") }
             return
@@ -215,6 +220,7 @@ class MessageListener : NotificationListenerService() {
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         if (sbn == null) return
         val key = sbn.key
+        keyConv[key]?.let { userActedAt[it] = System.currentTimeMillis() }
         main.post {
             val convs = pending.filterValues { it.key == key }.keys.toList()
             for (c in convs) cancelPending(c, "ты открыл чат")
@@ -273,7 +279,12 @@ class MessageListener : NotificationListenerService() {
         return all.firstOrNull { a -> a.remoteInputs?.any { it.allowFreeFormInput } == true }
     }
 
-    private fun autoReply(pkg: String, app: String, conv: String, msg: Parsed, action: Notification.Action, mode: String) {
+    private fun autoReply(pkg: String, app: String, conv: String, msg: Parsed, action: Notification.Action, mode: String, attempt: Int = 0, startedAt: Long = System.currentTimeMillis()) {
+        if (attempt > 0 && (userActedAt[conv] ?: 0L) > startedAt) {
+            Store.log("skip", "${msg.chat}: ты уже ответил сам — повтор отменён")
+            lastReplyAt.remove(conv)
+            return
+        }
         Bus.emit(Event("thinking"))
         try {
             val hist = Store.chatHistory(pkg, msg.chat, 12)
@@ -301,10 +312,16 @@ class MessageListener : NotificationListenerService() {
                 Store.log("error", "Не смог отправить ответ в «${msg.chat}»")
             }
         } catch (e: Exception) {
-            lastReplyAt.remove(conv)
             val m = e.message ?: e.toString()
-            Store.log("error", m)
-            Bus.emit(Event("error", m))
+            if (e is Gemini.ApiError && e.retryable && attempt < 3) {
+                // сервер занят — попробуем ещё раз чуть позже, не сдаёмся
+                Store.log("error", "$m — повторю через минуту (${msg.chat})")
+                main.postDelayed({ exec.execute { autoReply(pkg, app, conv, msg, action, mode, attempt + 1, startedAt) } }, 60_000L)
+            } else {
+                lastReplyAt.remove(conv)
+                Store.log("error", m)
+                Bus.emit(Event("error", m))
+            }
         } finally {
             Bus.emit(Event("done"))
         }
