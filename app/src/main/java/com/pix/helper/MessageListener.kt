@@ -141,6 +141,7 @@ class MessageListener : NotificationListenerService() {
     }
 
     private fun handle(sbn: StatusBarNotification) {
+        if (!Store.enabled) return
         val pkg = sbn.packageName
         if (pkg == packageName) return
         val n = sbn.notification ?: return
@@ -284,6 +285,7 @@ class MessageListener : NotificationListenerService() {
 
     private fun fire(conv: String) {
         val p = pending.remove(conv) ?: return
+        if (!Store.enabled) return
         if (Store.isBusy() || !Store.silenceReply) return
         // если уведомление исчезло — значит хозяин открыл чат
         val stillUnread = try {
@@ -377,6 +379,10 @@ class MessageListener : NotificationListenerService() {
     }
 
     private fun autoReply(pkg: String, app: String, conv: String, msg: Parsed, action: Notification.Action, mode: String, attempt: Int = 0, startedAt: Long = System.currentTimeMillis()) {
+        if (!Store.enabled) {
+            lastReplyAt.remove(conv)
+            return
+        }
         if (attempt > 0 && (userActedAt[conv] ?: 0L) > startedAt) {
             Store.log("skip", "${msg.chat}: ты уже ответил сам — повтор отменён")
             lastReplyAt.remove(conv)

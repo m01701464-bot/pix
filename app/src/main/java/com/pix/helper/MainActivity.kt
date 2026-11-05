@@ -36,6 +36,7 @@ class MainActivity : Activity() {
     private val cDark = 0xFF0E1A17.toInt()
 
     private lateinit var busyStatus: TextView
+    private lateinit var powerBtn: Button
     private lateinit var overlayBtn: Button
     private lateinit var logText: TextView
     private lateinit var keyResult: TextView
@@ -110,6 +111,10 @@ class MainActivity : Activity() {
         headText.addView(text("ИИ-помощник поверх экрана: отвечает за тебя, пока ты занят, и выполняет поручения", 14f, cSub))
         head.addView(headText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(head)
+
+        // Главный выключатель
+        powerBtn = button("") { togglePower() }
+        root.addView(powerBtn, fullWidth(top = 14))
 
         // Режим «Я занят»
         val busyCard = card(root, "Режим «Я занят»")
@@ -309,6 +314,13 @@ class MainActivity : Activity() {
     // ---------------- Логика ----------------
 
     private fun refreshDynamic() {
+        if (Store.enabled) {
+            powerBtn.text = "⏻ Выключить Пикса полностью"
+            styleButton(powerBtn, false)
+        } else {
+            powerBtn.text = "▶ Включить Пикса (сейчас выключен)"
+            styleButton(powerBtn, true)
+        }
         busyStatus.text = Store.busyText() + when {
             !listenerEnabled() -> "\n⚠️ Нет доступа к уведомлениям — Пикс не видит сообщения"
             !MessageListener.connected -> "\n⏳ Подключаюсь к уведомлениям… Если долго — выключи и включи доступ к уведомлениям"
@@ -337,7 +349,21 @@ class MainActivity : Activity() {
         logText.text = if (lines.isEmpty()) "Пока пусто" else lines.joinToString("\n")
     }
 
+    private fun togglePower() {
+        if (Store.enabled) {
+            save()
+            Store.turnOff()
+            OverlayService.stop(this)
+            toast("Пикс выключен — никому не отвечает")
+        } else {
+            Store.turnOn()
+            toast("Пикс включён")
+        }
+        overlayBtn.postDelayed({ refreshDynamic() }, 300)
+    }
+
     private fun setBusy(minutes: Int) {
+        if (!Store.enabled) Store.turnOn()
         save()
         Store.setBusy(true, minutes)
         if (!listenerEnabled()) toast("Дай доступ к уведомлениям, иначе Пикс не увидит сообщения")
@@ -360,6 +386,7 @@ class MainActivity : Activity() {
             return
         }
         save()
+        if (!Store.enabled) Store.turnOn()
         Store.overlayEnabled = true
         OverlayService.start(this)
         overlayBtn.postDelayed({ refreshDynamic() }, 400)

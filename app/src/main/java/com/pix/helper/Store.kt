@@ -269,6 +269,26 @@ object Store {
     fun logSince(t: Long, type: String): List<JSONObject> =
         objs(arr("log")).filter { it.optLong("t") >= t && it.optString("type") == type }
 
+    /** Главный выключатель: false — Пикс никому не отвечает и не висит на экране */
+    var enabled: Boolean
+        get() = p.getBoolean("enabled", true)
+        set(v) = p.edit().putBoolean("enabled", v).apply()
+
+    /** Полностью выключить Пикса */
+    fun turnOff() {
+        enabled = false
+        overlayEnabled = false
+        if (busy) setBusy(false, 0)
+        log("busy", "⏻ Пикс выключен — никому не отвечает")
+        Bus.emit(Event("off"))
+    }
+
+    fun turnOn() {
+        enabled = true
+        log("busy", "▶ Пикс включён")
+        Bus.emit(Event("busy"))
+    }
+
     // ---------- Режим «Я занят» ----------
     var busy: Boolean
         get() = p.getBoolean("busy", false)
@@ -299,6 +319,7 @@ object Store {
     }
 
     fun busyText(): String {
+        if (!enabled) return "⏻ Пикс выключен — никому не отвечает"
         if (!isBusy()) return "Ты свободен — Пикс не отвечает за тебя"
         val u = busyUntil
         return if (u > 0) "Ты занят до ${time(u)} — Пикс отвечает за тебя" else "Ты занят — Пикс отвечает за тебя"

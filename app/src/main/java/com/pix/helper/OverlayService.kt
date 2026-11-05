@@ -48,6 +48,7 @@ class OverlayService : Service() {
     companion object {
         const val ACTION_STOP = "com.pix.helper.STOP"
         const val ACTION_OPEN_PANEL = "com.pix.helper.OPEN_PANEL"
+        const val ACTION_OFF = "com.pix.helper.OFF"
         @Volatile
         var running = false
         val feed = ArrayList<Msg>()
@@ -152,6 +153,11 @@ class OverlayService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_OFF -> {
+                Store.turnOff()
+                stopSelf()
+                return START_NOT_STICKY
+            }
             ACTION_OPEN_PANEL -> handler.post { openPanel() }
         }
         return START_STICKY
@@ -184,6 +190,15 @@ class OverlayService : Service() {
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null as Icon?, "Убрать с экрана", stop).build())
+            .addAction(
+                Notification.Action.Builder(
+                    null as Icon?, "⏻ Выключить Пикса",
+                    PendingIntent.getService(
+                        this, 4, Intent(this, OverlayService::class.java).setAction(ACTION_OFF),
+                        PendingIntent.FLAG_IMMUTABLE
+                    )
+                ).build()
+            )
             .build()
     }
 
@@ -395,6 +410,7 @@ class OverlayService : Service() {
                 flash(PixelSprite.Mood.ALERT, 3000)
                 say("⚠️ ${e.text}")
             }
+            "off" -> stopSelf()
             "busy" -> {
                 applyMood()
                 updateNotification()
@@ -542,6 +558,9 @@ class OverlayService : Service() {
             Store.markAllSeen()
             applyMood()
             addFeed(2, "Все сообщения отмечены прочитанными")
+        }, LinearLayout.LayoutParams(gap))
+        quick.addView(chip("⏻ Выключить") {
+            Store.turnOff()
         }, LinearLayout.LayoutParams(gap))
         quick.addView(chip("🧹 Очистить") {
             feed.clear()
