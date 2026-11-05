@@ -172,7 +172,7 @@ class MainActivity : Activity() {
         btnGemini = button("Gemini") { setProvider("gemini") }
         btnClaude = button("Claude") { setProvider("claude") }
         apiCard.addView(row(btnGroq, btnGemini, btnClaude))
-        apiCard.addView(text("Groq и Gemini — бесплатно, Claude — платно. У Groq самые большие бесплатные лимиты.", 12f, cSub), fullWidth(top = 6))
+        apiCard.addView(text("Groq и Gemini — бесплатно, Claude — платно. Совет: основной — Gemini (пишет живее), и вставь ещё ключ Groq — если у Gemini кончится лимит, Пикс сам ответит через Groq.", 12f, cSub), fullWidth(top = 6))
 
         groqBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apiCard.addView(groqBox, fullWidth(top = 6))
@@ -479,7 +479,8 @@ class MainActivity : Activity() {
         styleButton(btnGroq, provider == "groq")
         styleButton(btnGemini, provider == "gemini")
         styleButton(btnClaude, provider == "claude")
-        groqBox.visibility = if (provider == "groq") View.VISIBLE else View.GONE
+        // ключ Groq показываем и при Gemini — как запасной
+        groqBox.visibility = if (provider == "groq" || provider == "gemini") View.VISIBLE else View.GONE
         geminiBox.visibility = if (provider == "gemini") View.VISIBLE else View.GONE
         claudeBox.visibility = if (provider == "claude") View.VISIBLE else View.GONE
     }

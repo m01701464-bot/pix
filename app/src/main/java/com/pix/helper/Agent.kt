@@ -33,17 +33,25 @@ object Agent {
     }
 
     private fun run(userText: String): String {
-        val finalText = when {
-            Brain.groq() -> runTextAgent(userText) { sys, turns -> Groq.chat(sys, turns, 2048) }
-            Brain.gemini() -> runGeminiSafe(userText)
-            else -> runClaude(userText)
-        }.ifBlank { "Готово ✅" }
+        val raw: String = try {
+            runWith(Store.provider, userText)
+        } catch (e: Exception) {
+            val b = Brain.backup()
+            if (b != null && Brain.worthFallback(e)) runWith(b, userText) else throw e
+        }
+        val finalText = raw.ifBlank { "Готово ✅" }
         synchronized(history) {
             history.add("user" to userText)
             history.add("assistant" to finalText)
             while (history.size > 30) history.removeAt(0)
         }
         return finalText
+    }
+
+    private fun runWith(provider: String, userText: String): String = when (provider) {
+        "groq" -> runTextAgent(userText) { sys, turns -> Groq.chat(sys, turns, 2048) }
+        "claude" -> runClaude(userText)
+        else -> runGeminiSafe(userText)
     }
 
     /** Сначала «родные» инструменты Gemini, при сбое — текстовые команды. */
