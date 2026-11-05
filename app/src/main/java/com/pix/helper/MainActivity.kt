@@ -268,6 +268,8 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // после обновления Android иногда «забывает» подключить слушатель — напоминаем
+        if (listenerEnabled() && !MessageListener.connected) MessageListener.rebind(this)
         Bus.on(busListener)
         refreshDynamic()
     }
@@ -281,7 +283,11 @@ class MainActivity : Activity() {
     // ---------------- Логика ----------------
 
     private fun refreshDynamic() {
-        busyStatus.text = Store.busyText()
+        busyStatus.text = Store.busyText() + when {
+            !listenerEnabled() -> "\n⚠️ Нет доступа к уведомлениям — Пикс не видит сообщения"
+            !MessageListener.connected -> "\n⏳ Подключаюсь к уведомлениям… Если долго — выключи и включи доступ к уведомлениям"
+            else -> "\n👁 Вижу уведомления"
+        }
         overlayBtn.text = if (OverlayService.running) "Убрать Пикса с экрана" else "Показать Пикса на экране"
         styleButton(overlayBtn, !OverlayService.running)
         for ((tv, check) in permRows) {

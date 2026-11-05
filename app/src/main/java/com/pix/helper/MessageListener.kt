@@ -45,6 +45,18 @@ class MessageListener : NotificationListenerService() {
     companion object {
         private const val TAG = "Pix"
         val targets = ConcurrentHashMap<String, Target>()
+
+        /** Подключён ли сейчас слушатель уведомлений */
+        @Volatile
+        var connected = false
+
+        /** Просит Android заново подключить слушатель (после обновления приложения он иногда отваливается). */
+        fun rebind(ctx: Context) {
+            try {
+                NotificationListenerService.requestRebind(android.content.ComponentName(ctx, MessageListener::class.java))
+            } catch (_: Exception) {
+            }
+        }
         private val lastSent = ConcurrentHashMap<String, String>()
         private val lastReplyAt = ConcurrentHashMap<String, Long>()
         /** когда хозяин сам открыл/ответил в чат */
@@ -103,6 +115,19 @@ class MessageListener : NotificationListenerService() {
         } catch (e: Exception) {
             Store.KNOWN_APPS[pkg] ?: pkg
         }
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        connected = true
+        Store.log("busy", "Пикс видит уведомления ✅")
+    }
+
+    override fun onListenerDisconnected() {
+        connected = false
+        super.onListenerDisconnected()
+        // пробуем подключиться обратно
+        rebind(this)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {

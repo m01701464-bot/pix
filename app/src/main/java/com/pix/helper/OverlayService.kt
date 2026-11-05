@@ -134,6 +134,7 @@ class OverlayService : Service() {
         }
         Bus.on(listener)
         handler.post(busyCheck)
+        if (!MessageListener.connected) MessageListener.rebind(this)
         try {
             val sm = getSystemService(SENSOR_SERVICE) as SensorManager
             sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
