@@ -362,6 +362,8 @@ object Store {
             "urgent" -> "❗"
             "task" -> "✅"
             "summary" -> "📋"
+            "in" -> "📩"
+            "wait" -> "⏳"
             "people" -> "👤"
             else -> "•"
         }

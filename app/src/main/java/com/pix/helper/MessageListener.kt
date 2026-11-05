@@ -62,6 +62,7 @@ class MessageListener : NotificationListenerService() {
         /** когда хозяин сам открыл/ответил в чат */
         private val userActedAt = ConcurrentHashMap<String, Long>()
         private val keyConv = ConcurrentHashMap<String, String>()
+        private val hintedApps = ConcurrentHashMap<String, Long>()
         private val seen = LinkedHashMap<String, Long>()
         // несколько потоков — один медленный ответ не задерживает остальные
         private val exec = Executors.newFixedThreadPool(3)
@@ -142,8 +143,18 @@ class MessageListener : NotificationListenerService() {
     private fun handle(sbn: StatusBarNotification) {
         val pkg = sbn.packageName
         if (pkg == packageName) return
-        if (pkg !in Store.apps) return
         val n = sbn.notification ?: return
+        if (pkg !in Store.apps) {
+            // подсказка: мессенджер, которого нет в «Где отвечать»
+            if (findReply(n) != null) {
+                val now0 = System.currentTimeMillis()
+                if (now0 - (hintedApps[pkg] ?: 0L) > 30 * 60_000L) {
+                    hintedApps[pkg] = now0
+                    Store.log("skip", "Вижу сообщения из «${appLabel(this, pkg)}», но его нет в «Где отвечать» — отметь его там")
+                }
+            }
+            return
+        }
         if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
         if ((n.flags and Notification.FLAG_ONGOING_EVENT) != 0) return
         val ex = n.extras ?: return
@@ -185,14 +196,24 @@ class MessageListener : NotificationListenerService() {
         val busy = Store.isBusy()
         Store.addInbox(pkg, app, msg.chat, msg.sender, msg.text, msg.group, !busy)
         Bus.emit(Event("inbox", "${msg.chat}: ${msg.text}"))
+        Store.log("in", "$app · ${msg.chat}" + (if (msg.group) " (группа)" else "") + ": ${msg.text.take(60)}")
 
         if (busy && Store.notifyUrgent && msg.text.contains("срочн", ignoreCase = true)) {
             notifyUrgent(pkg, "${msg.sender} (${app})", msg.text)
         }
 
-        if (action == null) return
-        if (msg.group && !Store.replyGroups) return
-        if (!Store.allowedChat(msg.chat, msg.sender)) return
+        if (action == null) {
+            Store.log("skip", "${msg.chat}: в уведомлении нет кнопки «Ответить» — ответить нельзя")
+            return
+        }
+        if (msg.group && !Store.replyGroups) {
+            Store.log("skip", "${msg.chat}: это группа, а ответы в группах выключены")
+            return
+        }
+        if (!Store.allowedChat(msg.chat, msg.sender)) {
+            Store.log("skip", "${msg.chat}: не подходит под фильтр «Кому отвечать»")
+            return
+        }
 
         if (busy) {
             // режим «Я занят» — отвечаем сразу
@@ -205,6 +226,9 @@ class MessageListener : NotificationListenerService() {
             // ждём, ответит ли хозяин сам
             val key = sbn.key
             main.post { schedule(conv, key, pkg, app, msg, action) }
+            Store.log("wait", "${msg.chat}: жду ${Store.silenceText()}, вдруг ответишь сам")
+        } else {
+            Store.log("skip", "${msg.chat}: автоответ выключен (нет «Я занят» и галочки «Отвечать самому…»)")
         }
     }
 
@@ -227,7 +251,10 @@ class MessageListener : NotificationListenerService() {
         val now = System.currentTimeMillis()
         val last = lastReplyAt[conv] ?: 0L
         // в режиме «Я занят» не частим; в режиме тишины пауза в N минут уже сама ограничивает частоту
-        if ((mode == "busy" || mode == "instant") && now - last < Store.cooldownSec * 1_000L) return
+        if ((mode == "busy" || mode == "instant") && now - last < Store.cooldownSec * 1_000L) {
+            Store.log("skip", "${msg.chat}: пауза ${Store.cooldownSec} сек между ответами")
+            return
+        }
         lastReplyAt[conv] = now
         keepAwake(120_000L)
         exec.execute { autoReply(pkg, app, conv, msg, action, mode) }
