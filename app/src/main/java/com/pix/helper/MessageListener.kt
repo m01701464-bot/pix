@@ -177,12 +177,18 @@ class MessageListener : NotificationListenerService() {
             return
         }
 
+        // группа под наблюдением: молча собираем сообщения для выжимки
+        if (Store.watchedGroup(msg.chat) != null) {
+            collectWatched(sbn.key, msg)
+            return
+        }
+
         val sig = "$conv|${msg.sender}|${msg.text}"
         synchronized(seen) {
             val prev = seen[sig]
             if (prev != null && now - prev < 10 * 60_000L) return
             seen[sig] = now
-            while (seen.size > 300) {
+            while (seen.size > 1000) {
                 val it = seen.keys.iterator()
                 it.next()
                 it.remove()
@@ -245,6 +251,44 @@ class MessageListener : NotificationListenerService() {
                 }
             w.acquire(ms)
         } catch (_: Exception) {
+        }
+    }
+
+    private fun collectWatched(key: String, msg: Parsed) {
+        val items = if (msg.thread.isNotEmpty()) msg.thread else listOf("${msg.sender}: ${msg.text}")
+        var added = 0
+        val now = System.currentTimeMillis()
+        for (item in items) {
+            val sig = "w|${msg.chat}|$item"
+            synchronized(seen) {
+                if (seen.containsKey(sig)) return@synchronized
+                seen[sig] = now
+                while (seen.size > 1000) {
+                    val it = seen.keys.iterator()
+                    it.next()
+                    it.remove()
+                }
+                val i = item.indexOf(": ")
+                val who = if (i > 0) item.substring(0, i) else msg.sender
+                val txt = if (i > 0) item.substring(i + 2) else item
+                if (who != "Я") {
+                    Store.addWatch(msg.chat, who, txt)
+                    added++
+                }
+            }
+        }
+        if (Store.watchClear) {
+            // убираем уведомление группы из шторки — сообщения в Telegram остаются непрочитанными
+            main.postDelayed({
+                try {
+                    cancelNotification(key)
+                } catch (_: Exception) {
+                }
+            }, 1500)
+        }
+        if (added > 0) {
+            val chat = msg.chat
+            exec.execute { Digest.maybeAuto(this, chat) }
         }
     }
 

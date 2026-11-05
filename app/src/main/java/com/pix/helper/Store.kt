@@ -289,6 +289,62 @@ object Store {
         Bus.emit(Event("busy"))
     }
 
+    // ---------- Слежка за группами ----------
+    /** Названия групп через запятую — Пикс в них молчит и собирает выжимку */
+    var watchGroups: String
+        get() = s("watchGroups", "")
+        set(v) = put("watchGroups", v)
+
+    /** Как хозяина называют в группах (ники, прозвища) */
+    var ownerAliases: String
+        get() = s("ownerAliases", "")
+        set(v) = put("ownerAliases", v)
+
+    var watchClear: Boolean
+        get() = p.getBoolean("watchClear", true)
+        set(v) = p.edit().putBoolean("watchClear", v).apply()
+
+    /** Автовыжимка каждые N новых сообщений (0 — только по запросу) */
+    var watchEvery: Int
+        get() = p.getInt("watchEvery", 50)
+        set(v) = p.edit().putInt("watchEvery", v).apply()
+
+    /** Название отслеживаемой группы, если этот чат под неё подходит */
+    fun watchedGroup(chat: String): String? {
+        val c = chat.lowercase()
+        return names(watchGroups).firstOrNull { c.contains(it) }?.let { chat }
+    }
+
+    @Synchronized
+    fun addWatch(group: String, sender: String, text: String) {
+        val a = arr("watch")
+        a.put(JSONObject().put("t", System.currentTimeMillis()).put("g", group).put("s", sender).put("x", text))
+        saveArr("watch", a, 1500)
+    }
+
+    @Synchronized
+    fun watchSince(group: String?, t: Long): List<JSONObject> =
+        objs(arr("watch")).filter { it.optLong("t") >= t && (group == null || it.optString("g") == group) }
+
+    @Synchronized
+    fun watchedChats(): List<String> = objs(arr("watch")).map { it.optString("g") }.distinct()
+
+    fun digestAt(group: String): Long = try {
+        JSONObject(s("digestAt", "{}")).optLong(group, 0L)
+    } catch (e: Exception) {
+        0L
+    }
+
+    @Synchronized
+    fun setDigestAt(group: String, t: Long) {
+        val o = try {
+            JSONObject(s("digestAt", "{}"))
+        } catch (e: Exception) {
+            JSONObject()
+        }
+        put("digestAt", o.put(group, t).toString())
+    }
+
     // ---------- Режим «Я занят» ----------
     var busy: Boolean
         get() = p.getBoolean("busy", false)
@@ -408,6 +464,7 @@ object Store {
             "task" -> "✅"
             "summary" -> "📋"
             "in" -> "📩"
+            "digest" -> "👥"
             "wait" -> "⏳"
             "people" -> "👤"
             else -> "•"

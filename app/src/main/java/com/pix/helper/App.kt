@@ -15,11 +15,15 @@ class App : Application() {
         nm.createNotificationChannel(
             NotificationChannel(CH_REMIND, "Напоминания и срочное", NotificationManager.IMPORTANCE_HIGH)
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CH_DIGEST, "Выжимки из групп", NotificationManager.IMPORTANCE_DEFAULT)
+        )
     }
 
     companion object {
         lateinit var instance: App
         const val CH_SERVICE = "pix_service"
         const val CH_REMIND = "pix_remind"
+        const val CH_DIGEST = "pix_digest"
     }
 }

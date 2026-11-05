@@ -61,6 +61,13 @@ object Tools {
                 listOf("name", "note")
             )
         )
+        .put(
+            tool(
+                "group_digest",
+                "Выжимка интересного из групп, за которыми следит Пикс (с прошлой выжимки). Без group — по всем отслеживаемым группам.",
+                JSONObject().put("group", sp("Название группы (необязательно)"))
+            )
+        )
         .put(tool("daily_summary", "Составить сводку за сегодня: кто писал, что важно, что ответил Пикс.", JSONObject()))
         .put(
             tool(
@@ -83,6 +90,7 @@ object Tools {
         "set_busy" -> setBusy(input)
         "remember_person" -> rememberPerson(input)
         "daily_summary" -> Summary.build()
+        "group_digest" -> groupDigest(input)
         else -> "Неизвестный инструмент: $name"
     }
 
@@ -164,6 +172,14 @@ object Tools {
                 (if (it.optBoolean("group")) " (группа)" else "") +
                 " · ${it.optString("sender")}: ${it.optString("text")}"
         }
+    }
+
+    private fun groupDigest(input: JSONObject): String {
+        val q = input.optString("group").trim().lowercase()
+        if (q.isEmpty()) return Digest.all()
+        val g = Store.watchedChats().firstOrNull { it.lowercase().contains(q) || q.contains(it.lowercase()) }
+            ?: return "Не слежу за группой «${input.optString("group")}». Отслеживаю: ${Store.watchedChats().joinToString().ifEmpty { "пока ничего" }}"
+        return Digest.forGroup(g)
     }
 
     private fun rememberPerson(input: JSONObject): String {

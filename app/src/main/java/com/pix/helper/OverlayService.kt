@@ -553,6 +553,7 @@ class OverlayService : Service() {
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { rightMargin = dp(6) }
         quick.addView(chip("📬 Сводка") { send("Сделай короткую сводку новых сообщений: кто писал и что из этого важно.") }, gap)
+        quick.addView(chip("👥 Группы") { send("Что интересного было в группах, за которыми ты следишь?") }, LinearLayout.LayoutParams(gap))
         quick.addView(chip("✅ Задачи") { send("Покажи мои задачи и напоминания.") }, LinearLayout.LayoutParams(gap))
         quick.addView(chip("👀 Прочитано") {
             Store.markAllSeen()

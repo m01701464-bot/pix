@@ -77,6 +77,10 @@ class MainActivity : Activity() {
     private lateinit var cbSummary: CheckBox
     private lateinit var fSummaryHour: EditText
     private lateinit var cbSleep: CheckBox
+    private lateinit var fWatch: EditText
+    private lateinit var fAliases: EditText
+    private lateinit var cbWatchClear: CheckBox
+    private lateinit var fWatchEvery: EditText
     private lateinit var cbShake: CheckBox
     private val appBoxes = LinkedHashMap<String, CheckBox>()
 
@@ -267,6 +271,15 @@ class MainActivity : Activity() {
         fWhite = field(filterCard, "Отвечать только им (пусто — всем)", Store.whitelist, "Саша, Мама")
         fBlack = field(filterCard, "Никогда не отвечать", Store.blacklist, "Начальник, Банк")
 
+        // Слежка за группами
+        val watchCard = card(root, "Следить за группами")
+        watchCard.addView(text("В этих группах Пикс молчит, тихо читает сообщения и рассказывает самое интересное. В Telegram включи для группы уведомления «Без звука» — не выключай их совсем, иначе Пикс ничего не увидит.", 13f, cSub))
+        fWatch = field(watchCard, "Названия групп через запятую", Store.watchGroups, "Класс 11Б, Пацаны")
+        fAliases = field(watchCard, "Как меня называют в группах (ники, прозвища)", Store.ownerAliases, "Макс, Максон, @max")
+        cbWatchClear = checkbox(watchCard, "Убирать их уведомления из шторки после прочтения", Store.watchClear)
+        fWatchEvery = field(watchCard, "Присылать выжимку каждые N новых сообщений (0 — только по запросу)", Store.watchEvery.toString(), "50", number = true)
+        watchCard.addView(button("Что было в группах? (сейчас)") { showDigestNow() }, fullWidth(top = 8))
+
         // Сводка
         val sumCard = card(root, "Сводка дня")
         cbSummary = checkbox(sumCard, "Присылать вечером, кто писал и что важно", Store.summaryEnabled)
@@ -430,6 +443,10 @@ class MainActivity : Activity() {
         Store.whitelist = fWhite.text.toString().trim()
         Store.blacklist = fBlack.text.toString().trim()
         Store.sleepAtNight = cbSleep.isChecked
+        Store.watchGroups = fWatch.text.toString().trim()
+        Store.ownerAliases = fAliases.text.toString().trim()
+        Store.watchClear = cbWatchClear.isChecked
+        Store.watchEvery = fWatchEvery.text.toString().trim().toIntOrNull()?.coerceIn(0, 10_000) ?: 50
         Store.shakeReact = cbShake.isChecked
         val newHour = fSummaryHour.text.toString().trim().toIntOrNull()?.coerceIn(0, 23) ?: 21
         if (Store.summaryEnabled != cbSummary.isChecked || Store.summaryHour != newHour) {
@@ -475,6 +492,25 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Отмена", null)
             .show()
+    }
+
+    private fun showDigestNow() {
+        save()
+        toast("Читаю группы…")
+        Thread {
+            val t = try {
+                Digest.all()
+            } catch (e: Exception) {
+                "⚠️ " + (e.message ?: e.toString())
+            }
+            runOnUiThread {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("👥 Что было в группах")
+                    .setMessage(t)
+                    .setPositiveButton("Ок", null)
+                    .show()
+            }
+        }.start()
     }
 
     private fun showSummaryNow() {
