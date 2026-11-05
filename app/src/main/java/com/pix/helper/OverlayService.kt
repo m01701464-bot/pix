@@ -5,7 +5,10 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
@@ -83,6 +86,91 @@ class OverlayService : Service() {
     private var sayView: TextView? = null
 
     private var thinking = 0
+    private val rnd = java.util.Random()
+    private var morningDay = ""
+
+    /** Сценки, которые Пикс сам устраивает от скуки, и что он при этом может сказать */
+    private val idleActs = listOf(
+        PixelSprite.Act.POKE, PixelSprite.Act.PHONE, PixelSprite.Act.READ, PixelSprite.Act.PEEK,
+        PixelSprite.Act.BALL, PixelSprite.Act.COOL, PixelSprite.Act.SNACK, PixelSprite.Act.SELFIE,
+        PixelSprite.Act.SNEEZE, PixelSprite.Act.PHONE, PixelSprite.Act.POKE
+    )
+    private val actLines = mapOf(
+        PixelSprite.Act.PHONE to listOf("да ты гонишь вообще 😤", "сам такой!", "ну всё, я обиделся", "кто так пишет блин", "щас я ему отвечу…", "не, ну это бан", "ДА КАК ТАК-ТО"),
+        PixelSprite.Act.COOL to listOf("😎", "я слишком крут для этого экрана", "не завидуй"),
+        PixelSprite.Act.SNACK to listOf("ням 🍪", "это моя печенька, не трогай"),
+        PixelSprite.Act.SELFIE to listOf("чиииз 📸", "я сегодня хорош"),
+        PixelSprite.Act.SNEEZE to listOf("апчхи! 🤧", "будь здоров, Пикс"),
+        PixelSprite.Act.READ to listOf("тихо, я читаю 📖", "интересная книжка, кстати"),
+        PixelSprite.Act.POKE to listOf("а что это за полоска такая?", "тык-тык"),
+        PixelSprite.Act.BALL to listOf("смотри как умею ⚽", "раз-два-три…"),
+        PixelSprite.Act.PEEK to listOf("ку-ку 👀", "я тут, если что")
+    )
+
+    private val idleLoop = object : Runnable {
+        override fun run() {
+            try {
+                maybeIdleAct()
+            } catch (_: Exception) {
+            }
+            handler.postDelayed(this, 6_000)
+        }
+    }
+
+    /** Иногда Пикс сам чем-нибудь занимается; если играет музыка — слушает её в наушниках */
+    private fun maybeIdleAct() {
+        val s = sprite ?: return
+        if (panelRoot != null || s.act != PixelSprite.Act.NONE || thinking > 0 || tempMood != null) return
+        if (s.mood != PixelSprite.Mood.IDLE && s.mood != PixelSprite.Mood.DUTY) return
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        if (am.isMusicActive) {
+            s.play(PixelSprite.Act.MUSIC)
+            return
+        }
+        if (rnd.nextInt(100) < 13) {
+            val a = idleActs[rnd.nextInt(idleActs.size)]
+            s.play(a)
+            if (rnd.nextInt(100) < 40) actLines[a]?.let { say(it[rnd.nextInt(it.size)], 4000) }
+        }
+    }
+
+    /** Реакции на разблокировку, зарядку и садящуюся батарею */
+    private val sysReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            val s = sprite ?: return
+            when (intent.action) {
+                Intent.ACTION_USER_PRESENT -> onUnlock(s)
+                Intent.ACTION_POWER_CONNECTED -> {
+                    s.play(PixelSprite.Act.CHARGE)
+                    say(listOf("мм, вкусненько ⚡", "о, зарядочка 😋", "заряжаюсь, не мешай")[rnd.nextInt(3)], 3500)
+                }
+                Intent.ACTION_BATTERY_LOW -> {
+                    s.play(PixelSprite.Act.TIRED)
+                    say("бро, я помираю… покорми меня 🔋", 5000)
+                }
+            }
+        }
+    }
+
+    private fun onUnlock(s: PixelSprite) {
+        val cal = Calendar.getInstance()
+        val h = cal.get(Calendar.HOUR_OF_DAY)
+        val day = "${cal.get(Calendar.YEAR)}-${cal.get(Calendar.DAY_OF_YEAR)}"
+        when {
+            h in 0..4 -> {
+                s.play(PixelSprite.Act.YAWN)
+                say(listOf("бро, ночь же… спать иди 😴", "ты чего не спишь? 🥱", "опять до утра в телефоне…")[rnd.nextInt(3)], 5000)
+            }
+            h in 6..11 && morningDay != day -> {
+                morningDay = day
+                handler.postDelayed({
+                    sprite?.play(PixelSprite.Act.COFFEE)
+                    say(listOf("доброе утро ☕", "утречко! кофе будешь?", "ммм, кофеек ☕")[rnd.nextInt(3)], 4000)
+                }, 1500)
+            }
+            else -> if (s.act == PixelSprite.Act.NONE && rnd.nextInt(100) < 60) s.play(PixelSprite.Act.WAVE)
+        }
+    }
     private var awakeUntil = 0L
     private var lastShake = 0L
     private var sensors: SensorManager? = null
@@ -135,6 +223,17 @@ class OverlayService : Service() {
         }
         Bus.on(listener)
         handler.post(busyCheck)
+        handler.postDelayed(idleLoop, 15_000)
+        try {
+            val f = IntentFilter().apply {
+                addAction(Intent.ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_BATTERY_LOW)
+            }
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(sysReceiver, f, Context.RECEIVER_NOT_EXPORTED)
+            else registerReceiver(sysReceiver, f)
+        } catch (_: Exception) {
+        }
         if (!MessageListener.connected) MessageListener.rebind(this)
         try {
             val sm = getSystemService(SENSOR_SERVICE) as SensorManager
@@ -166,6 +265,10 @@ class OverlayService : Service() {
     override fun onDestroy() {
         running = false
         sensors?.unregisterListener(shakeListener)
+        try {
+            unregisterReceiver(sysReceiver)
+        } catch (_: Exception) {
+        }
         Bus.off(listener)
         handler.removeCallbacksAndMessages(null)
         hideSay()
@@ -234,7 +337,7 @@ class OverlayService : Service() {
 
     private fun addBubble() {
         val s = PixelSprite(this)
-        s.px = dp(5).toFloat()
+        s.px = dp(4).toFloat()
         val lp = overlayParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
@@ -391,7 +494,13 @@ class OverlayService : Service() {
                 addFeed(2, "Ответил за тебя → ${e.text}")
                 say("💬 ${e.text}")
             }
-            "inbox" -> applyMood()
+            "inbox" -> {
+                applyMood()
+                val sp = sprite
+                if (e.text.isNotEmpty() && sp != null && sp.act == PixelSprite.Act.NONE && sp.mood != PixelSprite.Mood.SLEEP) {
+                    sp.play(PixelSprite.Act.JUMP)
+                }
+            }
             "urgent" -> {
                 flash(PixelSprite.Mood.ALERT, 6000)
                 addFeed(2, "❗ Срочное: ${e.text}")
