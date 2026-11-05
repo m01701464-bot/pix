@@ -30,4 +30,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v1.1.${{ github.run_number }}"
-          gh release create "$TAG" Pix.apk --repo "${{ github.repository }}" --title "Пикс $TAG" --notes "Автосборка APK. Скачай Pix.apk ниже." --latest
+          # GitHub иногда отвечает 5xx — пробуем несколько раз
+          for i in 1 2 3 4 5; do
+            if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              gh release upload "$TAG" Pix.apk --clobber --repo "${{ github.repository }}" && exit 0
+            elif gh release create "$TAG" Pix.apk --repo "${{ github.repository }}" --title "Пикс $TAG" --notes "Автосборка APK. Скачай Pix.apk ниже." --latest; then
+              exit 0
+            fi
+            echo "попытка $i не удалась, жду…"
+            sleep $((i * 15))
+          done
+          exit 1
