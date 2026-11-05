@@ -8,13 +8,15 @@ import org.json.JSONObject
  * Если основной ИИ упёрся в лимит или сбоит — Пикс по очереди пробует остальные, у которых есть ключ.
  */
 object Brain {
-    val FREE = listOf("gemini", "mistral", "openrouter")
+    /** Порядок очереди: NVIDIA — экстренная запаска в самом конце */
+    val FREE = listOf("gemini", "openrouter", "mistral", "nvidia")
 
     fun gemini(): Boolean = Store.provider == "gemini"
 
     fun name(p: String = Store.provider): String = when (p) {
         "mistral" -> "Mistral"
         "openrouter" -> "OpenRouter"
+        "nvidia" -> "NVIDIA"
         "claude" -> "Claude"
         else -> "Gemini"
     }
@@ -22,6 +24,7 @@ object Brain {
     fun keyFor(p: String): String = when (p) {
         "mistral" -> Store.mistralKey
         "openrouter" -> Store.orKey
+        "nvidia" -> Store.nvKey
         "claude" -> Store.apiKey
         else -> Store.geminiKey
     }
@@ -106,6 +109,7 @@ $character
         return when (provider) {
             "mistral" -> Mistral.chat(system, listOf("user" to user), maxOf(maxTokens, 512))
             "openrouter" -> OpenRouter.chat(system, listOf("user" to user), maxOf(maxTokens, 1024))
+            "nvidia" -> Nvidia.chat(system, listOf("user" to user), maxOf(maxTokens, 512))
             "claude" -> {
                 val model = if (reply) Store.replyModel else Store.chatModel
                 val resp = Claude.call(

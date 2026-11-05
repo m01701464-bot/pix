@@ -53,6 +53,8 @@ class MainActivity : Activity() {
     private lateinit var fMistralKey: EditText
     private lateinit var fMistralModel: EditText
     private lateinit var fOrKey: EditText
+    private lateinit var fNvKey: EditText
+    private lateinit var fNvModel: EditText
     private lateinit var fOrModel: EditText
     private lateinit var geminiBox: LinearLayout
     private lateinit var claudeBox: LinearLayout
@@ -220,7 +222,7 @@ class MainActivity : Activity() {
         btnClaude = button("Claude") { setProvider("claude") }
         apiCard.addView(text("Основной ИИ:", 13f, cSub), fullWidth(top = 4))
         apiCard.addView(row(btnGemini, btnMistral, btnRouter, btnClaude))
-        apiCard.addView(text("Вставь ключи от всех бесплатных — Gemini, Mistral, OpenRouter. Отвечает основной, а когда у него кончится лимит или он сбоит, Пикс сам переходит к следующему.", 12f, cSub), fullWidth(top = 6))
+        apiCard.addView(text("Отвечает основной. Когда у него кончится лимит или он сбоит, Пикс сам идёт по очереди: Gemini → OpenRouter → Mistral → NVIDIA (у кого есть ключ).", 12f, cSub), fullWidth(top = 6))
 
         geminiBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apiCard.addView(geminiBox, fullWidth(top = 6))
@@ -247,6 +249,12 @@ class MainActivity : Activity() {
         apiCard.addView(button("Открыть OpenRouter") { openUrl("https://openrouter.ai/keys") }, fullWidth(top = 8))
         fOrKey = field(apiCard, "Ключ OpenRouter", Store.orKey, "sk-or-…", password = true)
         fOrModel = field(apiCard, "Модель (пусто — Пикс сам выберет бесплатную)", Store.orModel, "")
+
+        apiCard.addView(text("NVIDIA — экстренная запаска", 15f, cText, bold = true), fullWidth(top = 14))
+        apiCard.addView(text("Включается последним, если остальные упёрлись в лимит. build.nvidia.com → войди → открой любую модель → Get API Key (ключ начинается с nvapi-).", 13f, cSub), fullWidth(top = 4))
+        apiCard.addView(button("Открыть NVIDIA") { openUrl("https://build.nvidia.com") }, fullWidth(top = 8))
+        fNvKey = field(apiCard, "Ключ NVIDIA", Store.nvKey, "nvapi-…", password = true)
+        fNvModel = field(apiCard, "Модель (пусто — Пикс сам выберет)", Store.nvModel, "")
 
         claudeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apiCard.addView(claudeBox, fullWidth(top = 6))
@@ -467,6 +475,8 @@ class MainActivity : Activity() {
         Store.mistralKey = fMistralKey.text.toString().trim()
         Store.mistralModel = fMistralModel.text.toString().trim().ifEmpty { "mistral-medium-latest" }
         Store.orKey = fOrKey.text.toString().trim()
+        Store.nvKey = fNvKey.text.toString().trim()
+        Store.nvModel = fNvModel.text.toString().trim()
         Store.orModel = fOrModel.text.toString().trim()
         Store.geminiKey = fGKey.text.toString().trim()
         Store.gChatModel = fGChat.text.toString().trim().ifEmpty { "gemini-3.8-flash" }

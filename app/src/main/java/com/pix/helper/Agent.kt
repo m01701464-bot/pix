@@ -46,6 +46,7 @@ object Agent {
     private fun runWith(provider: String, userText: String): String = when (provider) {
         "mistral" -> runTextAgent(userText) { sys, turns -> Mistral.chat(sys, turns, 1500) }
         "openrouter" -> runTextAgent(userText) { sys, turns -> OpenRouter.chat(sys, turns, 1500) }
+        "nvidia" -> runTextAgent(userText) { sys, turns -> Nvidia.chat(sys, turns, 1500) }
         "claude" -> runClaude(userText)
         else -> runGeminiSafe(userText)
     }

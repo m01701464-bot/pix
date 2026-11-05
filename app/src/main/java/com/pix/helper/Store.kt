@@ -66,6 +66,15 @@ object Store {
         get() = s("mistralModel", "mistral-medium-latest")
         set(v) = put("mistralModel", v)
 
+    var nvKey: String
+        get() = s("nvKey", "")
+        set(v) = put("nvKey", v)
+
+    /** Модель NVIDIA; пусто — Пикс сам выбирает */
+    var nvModel: String
+        get() = s("nvModel", "")
+        set(v) = put("nvModel", v)
+
     var orKey: String
         get() = s("orKey", "")
         set(v) = put("orKey", v)

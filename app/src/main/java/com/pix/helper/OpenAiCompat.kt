@@ -148,3 +148,50 @@ object OpenRouter {
         return OpenAiCompat.chatModels(models, URL_CHAT, Store.orKey, "OpenRouter", system, turns, maxTokens, HEADERS)
     }
 }
+
+/** NVIDIA NIM (build.nvidia.com): бесплатный доступ к открытым моделям. Экстренная запаска. */
+object Nvidia {
+    private const val URL_CHAT = "https://integrate.api.nvidia.com/v1/chat/completions"
+    private const val URL_MODELS = "https://integrate.api.nvidia.com/v1/models"
+    private val PREFER = listOf("llama-3.3-70b", "deepseek-v3", "qwen3", "mistral-large", "llama-3.1-70b", "gemma", "llama")
+    private val SKIP = listOf("embed", "rerank", "reward", "guard", "vision", "vl", "coder", "safety", "parse", "nemoretriever", "clip", "r1")
+    private val FALLBACK = listOf("meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-v3.1", "qwen/qwen3-235b-a22b")
+
+    @Volatile
+    private var cache: List<String> = emptyList()
+    @Volatile
+    private var cacheAt = 0L
+
+    private fun models(): List<String> {
+        if (cache.isNotEmpty() && System.currentTimeMillis() - cacheAt < 12 * 3600_000L) return cache
+        try {
+            val conn = java.net.URL(URL_MODELS).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 20_000
+            conn.setRequestProperty("authorization", "Bearer ${Store.nvKey.trim()}")
+            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+            val arr = org.json.JSONObject(text).optJSONArray("data") ?: org.json.JSONArray()
+            val ids = ArrayList<String>()
+            for (i in 0 until arr.length()) {
+                val id = arr.optJSONObject(i)?.optString("id") ?: continue
+                val l = id.lowercase()
+                if (SKIP.any { l.contains(it) }) continue
+                if (PREFER.any { l.contains(it) }) ids.add(id)
+            }
+            fun rank(id: String) = PREFER.indexOfFirst { id.lowercase().contains(it) }.let { if (it < 0) 99 else it }
+            cache = ids.sortedBy { rank(it) }
+            cacheAt = System.currentTimeMillis()
+        } catch (_: Exception) {
+        }
+        return cache
+    }
+
+    fun chat(system: String, turns: List<Pair<String, String>>, maxTokens: Int): String {
+        val list = LinkedHashSet<String>()
+        Store.nvModel.trim().let { if (it.isNotEmpty()) list.add(it) }
+        list.addAll(models().take(4))
+        list.addAll(FALLBACK)
+        return OpenAiCompat.chatModels(list, URL_CHAT, Store.nvKey, "NVIDIA", system, turns, maxTokens)
+    }
+}
