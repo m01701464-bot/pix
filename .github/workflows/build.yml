@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/setup-java@v4
         with:
@@ -28,3 +30,9 @@ jobs:
         with:
           name: Pix-apk
           path: Pix.apk
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0.${{ github.run_number }}"
+          gh release create "$TAG" Pix.apk --repo "${{ github.repository }}" --title "Пикс $TAG" --notes "Автосборка APK. Скачай Pix.apk ниже." --latest
