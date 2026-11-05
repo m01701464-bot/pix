@@ -681,8 +681,8 @@ class PixelSprite(ctx: Context) : View(ctx) {
         )
         private val PHONES_PAL = mapOf('H' to 0xFF2A2A33.toInt(), 'R' to 0xFFE04848.toInt())
 
-        private val GLYPH_Z = arrayOf("####", "..#.", ".#..", "####")
-        private val GLYPH_HASH = arrayOf("#.#", "###", "#.#", "###", "#.#")
+        private val GLYPH_Z = arrayOf("#####", "...#.", "..#..", ".#...", "#####")
+        private val GLYPH_HASH = arrayOf(".#.#.", "#####", ".#.#.", "#####", ".#.#.")
         private val GLYPH_BANG = arrayOf(".#.", ".#.", ".#.", "...", ".#.")
         private val GLYPH_STAR = arrayOf("#.#", ".#.", "#.#")
         private val GLYPH_NOTE = arrayOf(".##", ".#.", ".#.", "##.", "##.")
