@@ -53,10 +53,18 @@ object Store {
     private fun put(k: String, v: String) = p.edit().putString(k, v).apply()
 
     // ---------- Настройки ----------
-    /** "gemini" (бесплатно, по умолчанию) или "claude" */
+    /** "gemini", "groq" (оба бесплатно) или "claude" (платно) */
     var provider: String
         get() = s("provider", "gemini")
         set(v) = put("provider", v)
+
+    var groqKey: String
+        get() = s("groqKey", "")
+        set(v) = put("groqKey", v)
+
+    var groqModel: String
+        get() = s("groqModel", "openai/gpt-oss-120b")
+        set(v) = put("groqModel", v)
 
     var geminiKey: String
         get() = s("geminiKey", "")

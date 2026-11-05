@@ -47,6 +47,10 @@ class MainActivity : Activity() {
     private lateinit var fGReply: EditText
     private lateinit var btnGemini: Button
     private lateinit var btnClaude: Button
+    private lateinit var btnGroq: Button
+    private lateinit var groqBox: LinearLayout
+    private lateinit var fGroqKey: EditText
+    private lateinit var fGroqModel: EditText
     private lateinit var geminiBox: LinearLayout
     private lateinit var claudeBox: LinearLayout
     private var provider = Store.provider
@@ -164,9 +168,24 @@ class MainActivity : Activity() {
 
         // Claude API
         val apiCard = card(root, "Мозги Пикса")
-        btnGemini = button("Gemini — бесплатно") { setProvider("gemini") }
-        btnClaude = button("Claude — платно") { setProvider("claude") }
-        apiCard.addView(row(btnGemini, btnClaude))
+        btnGroq = button("Groq") { setProvider("groq") }
+        btnGemini = button("Gemini") { setProvider("gemini") }
+        btnClaude = button("Claude") { setProvider("claude") }
+        apiCard.addView(row(btnGroq, btnGemini, btnClaude))
+        apiCard.addView(text("Groq и Gemini — бесплатно, Claude — платно. У Groq самые большие бесплатные лимиты.", 12f, cSub), fullWidth(top = 6))
+
+        groqBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        apiCard.addView(groqBox, fullWidth(top = 6))
+        groqBox.addView(text("Бесплатный ключ без карты: открой console.groq.com → войди через Google → API Keys → Create API Key, скопируй (начинается с gsk_) и вставь сюда.", 13f, cSub), fullWidth(top = 6))
+        groqBox.addView(button("Открыть Groq Console") {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://console.groq.com/keys")))
+            } catch (e: Exception) {
+                toast("Открой console.groq.com/keys в браузере")
+            }
+        }, fullWidth(top = 8))
+        fGroqKey = field(groqBox, "Ключ Groq", Store.groqKey, "gsk_…", password = true)
+        fGroqModel = field(groqBox, "Модель", Store.groqModel, "openai/gpt-oss-120b")
 
         geminiBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         apiCard.addView(geminiBox, fullWidth(top = 6))
@@ -307,7 +326,7 @@ class MainActivity : Activity() {
             tv.setTextColor(if (ok) cAccent else cDark)
             tv.background = if (ok) null else round(cAccent, dp(10))
         }
-        reqText.text = "Запросов к Gemini сегодня: ${Store.requestsToday()}"
+        reqText.text = "Запросов к ИИ сегодня: ${Store.requestsToday()}"
         learnedText.text = "Выучено моих сообщений: ${Store.ownSamples(100).size}"
         // если Пикс сам запомнил кого-то из чата — показать это в поле
         if (Store.peopleNotes != peopleSynced) {
@@ -322,7 +341,7 @@ class MainActivity : Activity() {
         save()
         Store.setBusy(true, minutes)
         if (!listenerEnabled()) toast("Дай доступ к уведомлениям, иначе Пикс не увидит сообщения")
-        if ((Brain.gemini() && Store.geminiKey.isBlank()) || (!Brain.gemini() && Store.apiKey.isBlank())) {
+        if (!Brain.hasKey()) {
             toast("Вставь ключ ${Brain.name()} в блоке «Мозги Пикса»")
         }
         refreshDynamic()
@@ -359,6 +378,8 @@ class MainActivity : Activity() {
 
     private fun save() {
         Store.provider = provider
+        Store.groqKey = fGroqKey.text.toString().trim()
+        Store.groqModel = fGroqModel.text.toString().trim().ifEmpty { "openai/gpt-oss-120b" }
         Store.geminiKey = fGKey.text.toString().trim()
         Store.gChatModel = fGChat.text.toString().trim().ifEmpty { "gemini-3.8-flash" }
         Store.gReplyModel = fGReply.text.toString().trim().ifEmpty { "gemini-3.5-flash-lite" }
@@ -455,11 +476,12 @@ class MainActivity : Activity() {
     }
 
     private fun applyProviderUi() {
-        val g = provider != "claude"
-        styleButton(btnGemini, g)
-        styleButton(btnClaude, !g)
-        geminiBox.visibility = if (g) View.VISIBLE else View.GONE
-        claudeBox.visibility = if (g) View.GONE else View.VISIBLE
+        styleButton(btnGroq, provider == "groq")
+        styleButton(btnGemini, provider == "gemini")
+        styleButton(btnClaude, provider == "claude")
+        groqBox.visibility = if (provider == "groq") View.VISIBLE else View.GONE
+        geminiBox.visibility = if (provider == "gemini") View.VISIBLE else View.GONE
+        claudeBox.visibility = if (provider == "claude") View.VISIBLE else View.GONE
     }
 
     private fun testKey() {

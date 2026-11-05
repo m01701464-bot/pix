@@ -33,7 +33,11 @@ object Agent {
     }
 
     private fun run(userText: String): String {
-        val finalText = (if (Brain.gemini()) runGeminiSafe(userText) else runClaude(userText)).ifBlank { "Готово ✅" }
+        val finalText = when {
+            Brain.groq() -> runTextAgent(userText) { sys, turns -> Groq.chat(sys, turns, 2048) }
+            Brain.gemini() -> runGeminiSafe(userText)
+            else -> runClaude(userText)
+        }.ifBlank { "Готово ✅" }
         synchronized(history) {
             history.add("user" to userText)
             history.add("assistant" to finalText)
@@ -55,6 +59,33 @@ object Agent {
     }
 
     private val jsonRe = Regex("\\{[\\s\\S]*\\}")
+
+    /** Агент на текстовых командах для любой модели: модель пишет JSON-команду, Пикс выполняет. */
+    private fun runTextAgent(userText: String, chat: (String, List<Pair<String, String>>) -> String): String {
+        val sys = systemPrompt() + "\n\n" + toolsAsText()
+        val turns = ArrayList<Pair<String, String>>()
+        synchronized(history) { turns.addAll(history.takeLast(16)) }
+        turns.add("user" to userText)
+        var answer = ""
+        for (step in 0 until 6) {
+            val out = chat(sys, turns).trim()
+            val call = parseCommand(out)
+            if (call == null) {
+                answer = out
+                break
+            }
+            val name = call.optString("tool")
+            val result = try {
+                Tools.run(name, call.optJSONObject("args") ?: JSONObject())
+            } catch (e: Exception) {
+                "Ошибка: ${e.message}"
+            }
+            turns.add("assistant" to out)
+            turns.add("user" to "[Результат $name]\n$result\n\nЕсли нужно ещё действие — снова одна строка JSON. Иначе коротко ответь хозяину обычным текстом.")
+            answer = result
+        }
+        return answer
+    }
 
     /** Запасной режим: модель пишет команду как JSON-текст, Пикс её выполняет. */
     private fun runGeminiText(userText: String): String {
