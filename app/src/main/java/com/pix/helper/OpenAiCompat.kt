@@ -56,9 +56,12 @@ object OpenAiCompat {
                     else ApiError("$service $code: ${msg.take(150)}", tryNext = true)
                 }
             }
-            val content = JSONObject(text).optJSONArray("choices")?.optJSONObject(0)
-                ?.optJSONObject("message")?.optString("content", "") ?: ""
-            return content.replace(thinkRe, "").trim()
+            val msgObj = JSONObject(text).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+            val raw = if (msgObj == null || msgObj.isNull("content")) "" else msgObj.optString("content", "")
+            val content = raw.replace(thinkRe, "").trim()
+            // «думающая» модель могла потратить весь ответ на размышления — берём следующую
+            if (content.isEmpty() || content == "null") throw ApiError("$service: модель $model вернула пустой ответ", tryNext = true)
+            return content
         } finally {
             conn.disconnect()
         }
@@ -101,6 +104,7 @@ object OpenRouter {
     private const val URL_CHAT = "https://openrouter.ai/api/v1/chat/completions"
     private const val URL_MODELS = "https://openrouter.ai/api/v1/models"
     private val HEADERS = mapOf("HTTP-Referer" to "https://github.com/m01701464-bot/pix", "X-Title" to "Pix")
+    private val THINKERS = listOf("-r1", "r1-", "think", "reason", "qwq")
     private val PREFER = listOf("deepseek", "qwen", "llama-3.3", "gemma", "mistral", "glm", "kimi", "llama")
 
     @Volatile
@@ -123,7 +127,12 @@ object OpenRouter {
                 val id = arr.optJSONObject(i)?.optString("id") ?: continue
                 if (id.endsWith(":free")) ids.add(id)
             }
-            fun rank(id: String): Int = PREFER.indexOfFirst { id.lowercase().contains(it) }.let { if (it < 0) 99 else it }
+            fun rank(id: String): Int {
+                val l = id.lowercase()
+                // «думающие» модели отвечают долго и часто пусто — в конец
+                if (THINKERS.any { l.contains(it) }) return 200
+                return PREFER.indexOfFirst { l.contains(it) }.let { if (it < 0) 99 else it }
+            }
             cache = ids.sortedBy { rank(it) }
             cacheAt = System.currentTimeMillis()
         } catch (_: Exception) {

@@ -129,7 +129,7 @@ $character
                 val r = simpleWith(p, "Ответь одним коротким предложением.", "Поздоровайся как Пикс — пиксельный глаз-помощник.", 60, reply = true)
                 "✅ ${name(p)}: ${r.take(80)}"
             } catch (e: Exception) {
-                "⚠️ ${name(p)}: ${e.message?.take(120)}"
+                "⚠️ ${name(p)}: ${(e.message ?: e.javaClass.simpleName).take(120)}"
             }
         }
     }
