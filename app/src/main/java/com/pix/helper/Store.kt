@@ -128,6 +128,112 @@ object Store {
         get() = p.getInt("oy", -1)
         set(v) = p.edit().putInt("oy", v).apply()
 
+    // ---------- Стиль, люди, фильтр ----------
+    /** Примеры сообщений хозяина, введённые вручную (по одному в строке) */
+    var styleSamples: String
+        get() = s("styleSamples", "")
+        set(v) = put("styleSamples", v)
+
+    /** Запоминать сообщения, которые хозяин сам пишет через уведомления */
+    var learnStyle: Boolean
+        get() = p.getBoolean("learnStyle", true)
+        set(v) = p.edit().putBoolean("learnStyle", v).apply()
+
+    /** «Имя — кто это и как с ним говорить», одна строка на человека */
+    var peopleNotes: String
+        get() = s("peopleNotes", "")
+        set(v) = put("peopleNotes", v)
+
+    var whitelist: String
+        get() = s("whitelist", "")
+        set(v) = put("whitelist", v)
+
+    var blacklist: String
+        get() = s("blacklist", "")
+        set(v) = put("blacklist", v)
+
+    var summaryEnabled: Boolean
+        get() = p.getBoolean("summaryEnabled", true)
+        set(v) = p.edit().putBoolean("summaryEnabled", v).apply()
+
+    var summaryHour: Int
+        get() = p.getInt("summaryHour", 21)
+        set(v) = p.edit().putInt("summaryHour", v).apply()
+
+    var sleepAtNight: Boolean
+        get() = p.getBoolean("sleepAtNight", true)
+        set(v) = p.edit().putBoolean("sleepAtNight", v).apply()
+
+    var shakeReact: Boolean
+        get() = p.getBoolean("shakeReact", true)
+        set(v) = p.edit().putBoolean("shakeReact", v).apply()
+
+    @Synchronized
+    fun addOwnSample(text: String) {
+        val t = text.trim()
+        if (t.length < 2 || t.length > 300) return
+        val a = arr("own")
+        for (i in 0 until a.length()) if (a.optString(i) == t) return
+        a.put(t)
+        saveArr("own", a, 40)
+    }
+
+    @Synchronized
+    fun ownSamples(n: Int): List<String> {
+        val a = arr("own")
+        val l = ArrayList<String>()
+        for (i in 0 until a.length()) l.add(a.optString(i))
+        return l.takeLast(n)
+    }
+
+    @Synchronized
+    fun clearOwnSamples() = put("own", "[]")
+
+    fun styleExamples(): List<String> =
+        (styleSamples.lines().map { it.trim() }.filter { it.isNotEmpty() } + ownSamples(25)).takeLast(30)
+
+    private fun names(src: String): List<String> =
+        src.split(",", ";", "\n").map { it.trim().lowercase() }.filter { it.length >= 2 }
+
+    private fun matches(name: String, chat: String, sender: String): Boolean {
+        val c = chat.lowercase()
+        val s2 = sender.lowercase()
+        return c.contains(name) || s2.contains(name)
+    }
+
+    /** Можно ли Пиксу отвечать в этот чат (белый / чёрный список). */
+    fun allowedChat(chat: String, sender: String): Boolean {
+        if (names(blacklist).any { matches(it, chat, sender) }) return false
+        val wl = names(whitelist)
+        return wl.isEmpty() || wl.any { matches(it, chat, sender) }
+    }
+
+    /** Заметка о собеседнике из «Заметок о людях». */
+    fun noteFor(chat: String, sender: String): String? {
+        val out = ArrayList<String>()
+        for (line in peopleNotes.lines()) {
+            val l = line.trim()
+            if (l.isEmpty()) continue
+            val idx = listOf(l.indexOf('—'), l.indexOf(" - "), l.indexOf(':')).filter { it > 0 }.minOrNull() ?: continue
+            val name = l.substring(0, idx).trim().lowercase()
+            if (name.length >= 2 && matches(name, chat, sender)) out.add(l)
+        }
+        return if (out.isEmpty()) null else out.joinToString("; ")
+    }
+
+    @Synchronized
+    fun addPersonNote(name: String, note: String) {
+        val line = "${name.trim()} — ${note.trim()}"
+        peopleNotes = (peopleNotes.trimEnd() + "\n" + line).trim()
+    }
+
+    @Synchronized
+    fun inboxSince(t: Long): List<JSONObject> = objs(arr("inbox")).filter { it.optLong("t") >= t }
+
+    @Synchronized
+    fun logSince(t: Long, type: String): List<JSONObject> =
+        objs(arr("log")).filter { it.optLong("t") >= t && it.optString("type") == type }
+
     // ---------- Режим «Я занят» ----------
     var busy: Boolean
         get() = p.getBoolean("busy", false)
@@ -244,6 +350,8 @@ object Store {
             "busy" -> "🟢"
             "urgent" -> "❗"
             "task" -> "✅"
+            "summary" -> "📋"
+            "people" -> "👤"
             else -> "•"
         }
         "${time(it.optLong("t"))}  $icon ${it.optString("text")}"

@@ -11,7 +11,7 @@ import kotlin.math.abs
 /** Пикс — пиксельный глаз-ромб со зрачком посередине. Смотрит, моргает, щурится. */
 class PixelSprite(ctx: Context) : View(ctx) {
 
-    enum class Mood { IDLE, DUTY, THINKING, HAPPY, ALERT }
+    enum class Mood { IDLE, DUTY, THINKING, HAPPY, ALERT, SLEEP, DIZZY }
 
     var mood: Mood = Mood.IDLE
         set(v) {
@@ -30,6 +30,12 @@ class PixelSprite(ctx: Context) : View(ctx) {
             field = v
             requestLayout()
         }
+
+    /** Куда смотреть «по умолчанию» (-2..2): к центру экрана */
+    var homeLook = 0
+
+    /** Принудительный взгляд (например, вслед за пальцем); null — сам решает */
+    var lookOverride: Int? = null
 
     var squish = false
         set(v) {
@@ -76,23 +82,29 @@ class PixelSprite(ctx: Context) : View(ctx) {
     private fun step() {
         tick++
         if (blinkLeft > 0) blinkLeft--
-        else if (mood != Mood.THINKING && rnd.nextInt(100) < 3) blinkLeft = 2
+        else if (mood != Mood.THINKING && mood != Mood.DIZZY && rnd.nextInt(100) < 3) blinkLeft = 2
 
+        val ov = lookOverride
         when (mood) {
             // думает — зрачок бегает из стороны в сторону
             Mood.THINKING -> look = if ((tick / 4) % 2 == 0) -2 else 2
-            Mood.ALERT, Mood.HAPPY -> look = 0
+            // кружится голова — зрачок мечется
+            Mood.DIZZY -> look = DIZZY_PATH[tick % DIZZY_PATH.size]
+            Mood.ALERT, Mood.HAPPY, Mood.SLEEP -> look = ov ?: 0
             else -> {
-                // иногда оглядывается
-                if (lookHold > 0) lookHold--
-                else {
+                if (ov != null) {
+                    look = ov
+                } else if (lookHold > 0) {
+                    lookHold--
+                } else {
+                    // иногда оглядывается, но чаще смотрит в сторону центра экрана
                     look = when (rnd.nextInt(10)) {
                         0 -> -2
                         1 -> 2
                         2 -> -1
                         3 -> 1
-                        else -> 0
-                    }
+                        else -> homeLook
+                    }.coerceIn(-2, 2)
                     lookHold = 8 + rnd.nextInt(20)
                 }
             }
@@ -100,7 +112,11 @@ class PixelSprite(ctx: Context) : View(ctx) {
     }
 
     override fun onDraw(c: Canvas) {
-        val period = if (mood == Mood.THINKING) 2 else 5
+        val period = when (mood) {
+            Mood.THINKING, Mood.DIZZY -> 2
+            Mood.SLEEP -> 9
+            else -> 5
+        }
         val bob = if ((tick / period) % 2 == 0) 0f else px
         val ox = px
         val oy = px * 2 - bob
@@ -112,6 +128,13 @@ class PixelSprite(ctx: Context) : View(ctx) {
                 paint.color = color
                 c.drawRect(ox + col * px, oy + r * px, ox + (col + 1) * px, oy + (r + 1) * px, paint)
             }
+        }
+        // спит — над глазом всплывают «z»
+        if (mood == Mood.SLEEP) {
+            paint.color = 0xFFB8C7D9.toInt()
+            val phase = (tick / 6) % 3
+            if (phase != 2) drawZ(c, ox + 12 * px, oy + 1 * px, px * 0.6f)
+            if (phase == 1) drawZ(c, ox + 14.5f * px, oy - 1f * px, px * 0.8f)
         }
         c.restore()
 
@@ -127,6 +150,13 @@ class PixelSprite(ctx: Context) : View(ctx) {
         }
     }
 
+    private fun drawZ(c: Canvas, x: Float, y: Float, p: Float) {
+        // Z из пикселей 3×3
+        for (i in 0 until 3) c.drawRect(x + i * p, y, x + (i + 1) * p, y + p, paint)
+        c.drawRect(x + p, y + p, x + 2 * p, y + 2 * p, paint)
+        for (i in 0 until 3) c.drawRect(x + i * p, y + 2 * p, x + (i + 1) * p, y + 3 * p, paint)
+    }
+
     private fun colorAt(r: Int, c: Int): Int? {
         val ch = GRID[r][c]
         if (ch != 'W') {
@@ -137,13 +167,13 @@ class PixelSprite(ctx: Context) : View(ctx) {
             }
         }
         // веко
-        if (blinkLeft > 0) return if (r == MID) C_OUTLINE else C_LID
+        if (blinkLeft > 0 || mood == Mood.SLEEP) return if (r == MID) C_OUTLINE else C_LID
         if (mood == Mood.HAPPY && r < MID) return C_LID
 
         val cx = CENTER + look
         val dr = abs(r - MID)
         val dc = abs(c - cx)
-        val pupilHalf = if (mood == Mood.ALERT) 1 else 2
+        val pupilHalf = if (mood == Mood.ALERT || mood == Mood.DIZZY) 1 else 2
         if (dc == 0 && dr <= pupilHalf) return C_PUPIL
         val inIris = (dr <= 1 && dc <= 2) || (dr == 2 && dc <= 1)
         if (inIris) {
@@ -162,6 +192,8 @@ class PixelSprite(ctx: Context) : View(ctx) {
             Mood.THINKING -> if ((tick / 2) % 2 == 0) 0xFF6AB8FF.toInt() else 0xFF4A8FD6.toInt()
             Mood.HAPPY -> 0xFFFF9BD2.toInt()
             Mood.ALERT -> if (on) 0xFFFF5A5A.toInt() else 0xFFC03A3A.toInt()
+            Mood.SLEEP -> 0xFF4FD1B5.toInt()
+            Mood.DIZZY -> if ((tick / 2) % 2 == 0) 0xFFFFD25A.toInt() else 0xFFFF9B4A.toInt()
         }
     }
 
@@ -187,6 +219,7 @@ class PixelSprite(ctx: Context) : View(ctx) {
         val ROWS = GRID.size
         const val MID = 5
         const val CENTER = 8
+        private val DIZZY_PATH = intArrayOf(-2, -1, 0, 1, 2, 1, 0, -1)
 
         private val C_OUTLINE = 0xFF1B1B1F.toInt()
         private val C_STAND = 0xFF26262C.toInt()

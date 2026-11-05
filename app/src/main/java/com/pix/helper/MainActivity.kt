@@ -61,6 +61,17 @@ class MainActivity : Activity() {
     private lateinit var cbSilence: CheckBox
     private lateinit var fSilence: EditText
     private lateinit var cbUrgent: CheckBox
+    private lateinit var cbLearn: CheckBox
+    private lateinit var fStyle: EditText
+    private lateinit var learnedText: TextView
+    private lateinit var fPeople: EditText
+    private var peopleSynced = Store.peopleNotes
+    private lateinit var fWhite: EditText
+    private lateinit var fBlack: EditText
+    private lateinit var cbSummary: CheckBox
+    private lateinit var fSummaryHour: EditText
+    private lateinit var cbSleep: CheckBox
+    private lateinit var cbShake: CheckBox
     private val appBoxes = LinkedHashMap<String, CheckBox>()
 
     private val busListener: (Event) -> Unit = { e ->
@@ -201,6 +212,42 @@ class MainActivity : Activity() {
         appsCard.addView(button("➕ Выбрать другие приложения…") { pickApps() }, fullWidth(top = 10))
         fCustomApps = field(appsCard, "Выбранные вручную (пакеты через запятую)", custom, "com.example.app")
 
+        // Мой стиль
+        val styleCard = card(root, "Пиши как я")
+        styleCard.addView(text("Пикс копирует твою манеру: длину сообщений, смайлы, сленг. Вставь несколько своих настоящих сообщений — по одному в строке.", 13f, cSub))
+        fStyle = field(styleCard, "Примеры моих сообщений", Store.styleSamples, "ща гляну\nну норм)\nдавай вечером созвонимся", multiline = true)
+        cbLearn = checkbox(styleCard, "Учиться на моих ответах из уведомлений", Store.learnStyle)
+        learnedText = text("", 12f, cSub)
+        styleCard.addView(learnedText)
+        styleCard.addView(button("Забыть выученное") {
+            Store.clearOwnSamples()
+            refreshDynamic()
+            toast("Забыл")
+        }, fullWidth(top = 8))
+
+        // Люди
+        val peopleCard = card(root, "Люди")
+        peopleCard.addView(text("Кто есть кто — Пикс будет отвечать каждому по-своему. Одна строка — один человек. Можно и в чате с Пиксом: «запомни: Саша — мой брат».", 13f, cSub))
+        fPeople = field(peopleCard, "Заметки о людях", Store.peopleNotes, "Мама — отвечать ласково, на «ты»\nСаша — брат, можно шутить\nОльга Петровна — начальница, вежливо", multiline = true)
+
+        // Фильтр
+        val filterCard = card(root, "Кому отвечать")
+        filterCard.addView(text("Имена через запятую — как они видны в мессенджере.", 13f, cSub))
+        fWhite = field(filterCard, "Отвечать только им (пусто — всем)", Store.whitelist, "Саша, Мама")
+        fBlack = field(filterCard, "Никогда не отвечать", Store.blacklist, "Начальник, Банк")
+
+        // Сводка
+        val sumCard = card(root, "Сводка дня")
+        cbSummary = checkbox(sumCard, "Присылать вечером, кто писал и что важно", Store.summaryEnabled)
+        fSummaryHour = field(sumCard, "Во сколько (час, 0–23)", Store.summaryHour.toString(), "21", number = true)
+        sumCard.addView(button("Показать сводку сейчас") { showSummaryNow() }, fullWidth(top = 8))
+
+        // Характер
+        val moodCard = card(root, "Характер глаза")
+        cbSleep = checkbox(moodCard, "Засыпать ночью (23:00–7:00), тап — разбудить", Store.sleepAtNight)
+        cbShake = checkbox(moodCard, "Пугаться, если трясти телефон", Store.shakeReact)
+        moodCard.addView(text("Глаз смотрит в сторону центра экрана, а когда тащишь — вслед за пальцем.", 12f, cSub))
+
         root.addView(button("Сохранить настройки", primary = true) {
             save()
             toast("Сохранено")
@@ -211,6 +258,8 @@ class MainActivity : Activity() {
         logText = text("", 13f, cSub)
         logText.setLineSpacing(0f, 1.15f)
         logCard.addView(logText)
+
+        Summary.schedule(this)
 
         if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed()) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
@@ -244,6 +293,12 @@ class MainActivity : Activity() {
             tv.text = if (ok) "✅" else "Разрешить"
             tv.setTextColor(if (ok) cAccent else cDark)
             tv.background = if (ok) null else round(cAccent, dp(10))
+        }
+        learnedText.text = "Выучено моих сообщений: ${Store.ownSamples(100).size}"
+        // если Пикс сам запомнил кого-то из чата — показать это в поле
+        if (Store.peopleNotes != peopleSynced) {
+            peopleSynced = Store.peopleNotes
+            fPeople.setText(peopleSynced)
         }
         val lines = Store.logLines(40)
         logText.text = if (lines.isEmpty()) "Пока пусто" else lines.joinToString("\n")
@@ -304,6 +359,22 @@ class MainActivity : Activity() {
         Store.silenceReply = cbSilence.isChecked
         Store.silenceMin = fSilence.text.toString().trim().toIntOrNull()?.coerceIn(1, 120) ?: 2
         Store.notifyUrgent = cbUrgent.isChecked
+        Store.styleSamples = fStyle.text.toString().trim()
+        Store.learnStyle = cbLearn.isChecked
+        if (Store.peopleNotes == peopleSynced) {
+            Store.peopleNotes = fPeople.text.toString().trim()
+            peopleSynced = Store.peopleNotes
+        }
+        Store.whitelist = fWhite.text.toString().trim()
+        Store.blacklist = fBlack.text.toString().trim()
+        Store.sleepAtNight = cbSleep.isChecked
+        Store.shakeReact = cbShake.isChecked
+        val newHour = fSummaryHour.text.toString().trim().toIntOrNull()?.coerceIn(0, 23) ?: 21
+        if (Store.summaryEnabled != cbSummary.isChecked || Store.summaryHour != newHour) {
+            Store.summaryEnabled = cbSummary.isChecked
+            Store.summaryHour = newHour
+            Summary.schedule(this)
+        }
         val set = LinkedHashSet<String>()
         for ((pkg, cb) in appBoxes) if (cb.isChecked) set.add(pkg)
         // выбор по неустановленным известным приложениям сохраняем как был
@@ -342,6 +413,25 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Отмена", null)
             .show()
+    }
+
+    private fun showSummaryNow() {
+        save()
+        toast("Составляю сводку…")
+        Thread {
+            val t = try {
+                Summary.build()
+            } catch (e: Exception) {
+                "⚠️ " + (e.message ?: e.toString())
+            }
+            runOnUiThread {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("📋 Сводка за сегодня")
+                    .setMessage(t)
+                    .setPositiveButton("Ок", null)
+                    .show()
+            }
+        }.start()
     }
 
     private fun setProvider(p: String) {

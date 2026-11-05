@@ -126,7 +126,11 @@ class MessageListener : NotificationListenerService() {
 
         keyConv[sbn.key] = conv
         if (msg.self) {
-            if (lastSent[conv]?.trim() != msg.text.trim()) userActedAt[conv] = now
+            if (lastSent[conv]?.trim() != msg.text.trim()) {
+                userActedAt[conv] = now
+                // учимся писать как хозяин
+                if (Store.learnStyle) Store.addOwnSample(msg.text)
+            }
             // хозяин (или Пикс) уже написал в этот чат — ждать больше нечего
             main.post { cancelPending(conv, if (lastSent[conv]?.trim() == msg.text.trim()) null else "ты ответил сам") }
             return
@@ -159,6 +163,7 @@ class MessageListener : NotificationListenerService() {
 
         if (action == null) return
         if (msg.group && !Store.replyGroups) return
+        if (!Store.allowedChat(msg.chat, msg.sender)) return
 
         if (busy) {
             // режим «Я занят» — отвечаем сразу
@@ -292,7 +297,7 @@ class MessageListener : NotificationListenerService() {
             val prompt = "Мессенджер: $app\nЧат: ${msg.chat}" + (if (msg.group) " (групповой)" else "") +
                 "\n\nПереписка (последнее сообщение — новое):\n$hist\n\n" +
                 "Ответь по существу на последние сообщения от ${msg.sender}. Только текст ответа или SKIP."
-            val reply = Brain.simple(autoSystem(mode), prompt, 300, reply = true)
+            val reply = Brain.simple(autoSystem(mode, msg), prompt, 300, reply = true)
                 .trim().trim('"', '«', '»').trim()
             if (reply.isEmpty() || reply.startsWith("SKIP", ignoreCase = true)) {
                 Store.log("skip", "${msg.chat}: не стал отвечать на «${msg.text.take(50)}»")
@@ -327,7 +332,7 @@ class MessageListener : NotificationListenerService() {
         }
     }
 
-    private fun autoSystem(mode: String): String {
+    private fun autoSystem(mode: String, msg: Parsed): String {
         val owner = Store.ownerName.ifBlank { "хозяин телефона" }
         val now = SimpleDateFormat("EEEE, d MMMM, HH:mm", Locale("ru")).format(Date())
         val situation = if (mode == "busy") {
@@ -337,7 +342,7 @@ class MessageListener : NotificationListenerService() {
         }
         return """Ты ведёшь переписку вместо человека по имени $owner. Сейчас $now. $situation
 Что $owner просит учитывать: ${Store.persona}
-
+${personBlock(msg)}${styleBlock(owner)}
 Как отвечать:
 - Отвечай ПО СУТИ: на вопрос — ответ, на просьбу — реакция по делу, на мнение — поддержи разговор. Держись темы собеседника и опирайся на переписку.
 - Пиши как живой человек в мессенджере: коротко (1–3 предложения), на языке и в тоне собеседника, без канцелярита.
@@ -347,6 +352,18 @@ class MessageListener : NotificationListenerService() {
 - Никогда не сообщай коды, пароли, адреса, номера карт и другие личные данные.
 - Если это реклама, рассылка, код подтверждения, системное уведомление или ответ не нужен («ок», «спасибо», стикер) — выведи ровно SKIP.
 - Выводи только текст ответа, без кавычек и пояснений."""
+    }
+
+    private fun personBlock(msg: Parsed): String {
+        val note = Store.noteFor(msg.chat, msg.sender) ?: return ""
+        return "\nО собеседнике (из заметок хозяина): $note\n"
+    }
+
+    private fun styleBlock(owner: String): String {
+        val ex = Store.styleExamples()
+        if (ex.isEmpty()) return ""
+        return "\nТак обычно пишет $owner — копируй манеру (длину, регистр, смайлы, сленг, пунктуацию), но не содержание:\n" +
+            ex.joinToString("\n") { "• $it" } + "\n"
     }
 
     private fun notifyUrgent(pkg: String, from: String, text: String) {

@@ -59,6 +59,7 @@ class BootReceiver : BroadcastReceiver() {
         val a = intent.action
         if (a != Intent.ACTION_BOOT_COMPLETED && a != Intent.ACTION_MY_PACKAGE_REPLACED) return
         Reminders.rescheduleAll(ctx)
+        Summary.schedule(ctx)
         if (Store.overlayEnabled && Settings.canDrawOverlays(ctx)) {
             try {
                 OverlayService.start(ctx)

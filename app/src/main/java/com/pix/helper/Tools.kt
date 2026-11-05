@@ -55,6 +55,15 @@ object Tools {
         )
         .put(
             tool(
+                "remember_person",
+                "Запомнить заметку о человеке: кто он хозяину и как с ним общаться (используется в автоответах).",
+                JSONObject().put("name", sp("Имя, как оно видно в мессенджере")).put("note", sp("Кто это и как отвечать")),
+                listOf("name", "note")
+            )
+        )
+        .put(tool("daily_summary", "Составить сводку за сегодня: кто писал, что важно, что ответил Пикс.", JSONObject()))
+        .put(
+            tool(
                 "set_busy",
                 "Включить или выключить режим «Я занят» (Пикс сам отвечает на входящие).",
                 JSONObject().put("on", bp("Включить?")).put("minutes", ip("На сколько минут; 0 — до ручного выключения")),
@@ -72,6 +81,8 @@ object Tools {
         "list_chats" -> MessageListener.chatNames()
         "reply_to_chat" -> MessageListener.replyByName(input.optString("chat"), input.optString("text"))
         "set_busy" -> setBusy(input)
+        "remember_person" -> rememberPerson(input)
+        "daily_summary" -> Summary.build()
         else -> "Неизвестный инструмент: $name"
     }
 
@@ -153,6 +164,15 @@ object Tools {
                 (if (it.optBoolean("group")) " (группа)" else "") +
                 " · ${it.optString("sender")}: ${it.optString("text")}"
         }
+    }
+
+    private fun rememberPerson(input: JSONObject): String {
+        val name = input.optString("name").trim()
+        val note = input.optString("note").trim()
+        if (name.length < 2 || note.isEmpty()) return "Нужно имя и заметка"
+        Store.addPersonNote(name, note)
+        Store.log("people", "Запомнил: $name — $note")
+        return "Запомнил: $name — $note"
     }
 
     private fun setBusy(input: JSONObject): String {

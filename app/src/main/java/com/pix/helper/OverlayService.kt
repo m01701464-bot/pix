@@ -9,6 +9,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Icon
@@ -29,7 +33,10 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.util.Calendar
+import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.sqrt
 import kotlin.math.max
 import kotlin.math.min
 
@@ -60,6 +67,7 @@ class OverlayService : Service() {
         private val C_ACCENT = 0xFF4FD1B5.toInt()
         private val C_TEXT = 0xFFE6EDF3.toInt()
         private val C_SUB = 0xFF8B98A5.toInt()
+        private val SHAKE_LINES = arrayOf("Эй, не тряси! 😵", "Голова кружится…", "Ой-ой-ой! 🌀", "Я же глаз, а не погремушка!")
     }
 
     private lateinit var wm: WindowManager
@@ -74,6 +82,27 @@ class OverlayService : Service() {
     private var sayView: TextView? = null
 
     private var thinking = 0
+    private var awakeUntil = 0L
+    private var lastShake = 0L
+    private var sensors: SensorManager? = null
+    private val shakeListener = object : SensorEventListener {
+        override fun onSensorChanged(e: SensorEvent) {
+            if (!Store.shakeReact) return
+            val x = e.values[0]
+            val y = e.values[1]
+            val z = e.values[2]
+            val g = sqrt(x * x + y * y + z * z)
+            val now = System.currentTimeMillis()
+            if (abs(g - SensorManager.GRAVITY_EARTH) > 11f && now - lastShake > 4000) {
+                lastShake = now
+                awakeUntil = now + 5 * 60_000L
+                flash(PixelSprite.Mood.DIZZY, 3500)
+                say(SHAKE_LINES[(now % SHAKE_LINES.size).toInt()])
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
     private var tempMood: PixelSprite.Mood? = null
     private val clearTemp = Runnable {
         tempMood = null
@@ -105,6 +134,14 @@ class OverlayService : Service() {
         }
         Bus.on(listener)
         handler.post(busyCheck)
+        try {
+            val sm = getSystemService(SENSOR_SERVICE) as SensorManager
+            sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+                sm.registerListener(shakeListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+                sensors = sm
+            }
+        } catch (_: Exception) {
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -121,6 +158,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         running = false
+        sensors?.unregisterListener(shakeListener)
         Bus.off(listener)
         handler.removeCallbacksAndMessages(null)
         hideSay()
@@ -193,12 +231,14 @@ class OverlayService : Service() {
         wm.addView(s, lp)
         sprite = s
         bubbleParams = lp
+        s.post { updateHomeLook() }
         applyMood()
     }
 
     private inner class BubbleTouch : View.OnTouchListener {
         private var downX = 0f
         private var downY = 0f
+        private var lastX = 0f
         private var startX = 0
         private var startY = 0
         private var moved = false
@@ -217,6 +257,7 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX
                     downY = e.rawY
+                    lastX = e.rawX
                     startX = lp.x
                     startY = lp.y
                     moved = false
@@ -234,6 +275,9 @@ class OverlayService : Service() {
                         hideSay()
                     }
                     if (moved) {
+                        val step = e.rawX - lastX
+                        if (abs(step) > dp(2)) sprite?.lookOverride = if (step > 0) 2 else -2
+                        lastX = e.rawX
                         lp.x = startX + dx.toInt()
                         lp.y = startY + dy.toInt()
                         try {
@@ -245,6 +289,7 @@ class OverlayService : Service() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     handler.removeCallbacks(longPress)
                     sprite?.squish = false
+                    sprite?.lookOverride = null
                     if (moved) snapToEdge(v, lp)
                     else if (!longPressed && e.actionMasked == MotionEvent.ACTION_UP) togglePanel()
                 }
@@ -266,6 +311,7 @@ class OverlayService : Service() {
             }
         }
         anim.start()
+        sprite?.homeLook = if (target == 0) 1 else -1
         Store.overlayX = target
         Store.overlayY = lp.y
     }
@@ -287,9 +333,24 @@ class OverlayService : Service() {
             thinking > 0 -> PixelSprite.Mood.THINKING
             tempMood != null -> tempMood!!
             Store.isBusy() -> PixelSprite.Mood.DUTY
+            sleepyTime() -> PixelSprite.Mood.SLEEP
             else -> PixelSprite.Mood.IDLE
         }
         s.badge = Store.unseenCount()
+    }
+
+    /** Ночью (23:00–7:00) Пикс дремлет, если ничего не происходит. */
+    private fun sleepyTime(): Boolean {
+        if (!Store.sleepAtNight || System.currentTimeMillis() < awakeUntil) return false
+        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return h >= 23 || h < 7
+    }
+
+    private fun updateHomeLook() {
+        val s = sprite ?: return
+        val bp = bubbleParams ?: return
+        val w = if (s.width > 0) s.width else dp(95)
+        s.homeLook = if (bp.x + w / 2 < screenW() / 2) 1 else -1
     }
 
     private fun flash(m: PixelSprite.Mood, ms: Long) {
@@ -319,6 +380,11 @@ class OverlayService : Service() {
                 flash(PixelSprite.Mood.ALERT, 6000)
                 addFeed(2, "❗ Срочное: ${e.text}")
                 say("❗ Срочно: ${e.text}")
+            }
+            "summary" -> {
+                addFeed(1, "📋 Сводка дня:\n${e.text}")
+                flash(PixelSprite.Mood.HAPPY, 2500)
+                say("📋 Сводка дня готова — нажми на меня")
             }
             "remind" -> {
                 flash(PixelSprite.Mood.ALERT, 6000)
@@ -407,6 +473,11 @@ class OverlayService : Service() {
     }
 
     private fun togglePanel() {
+        if (sprite?.mood == PixelSprite.Mood.SLEEP) {
+            // разбудили
+            awakeUntil = System.currentTimeMillis() + 10 * 60_000L
+            flash(PixelSprite.Mood.HAPPY, 1500)
+        }
         if (panelRoot != null) closePanel() else openPanel()
     }
 
