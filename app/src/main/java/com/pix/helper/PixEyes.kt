@@ -40,6 +40,7 @@ class PixEyes : AccessibilityService() {
     private var dirty = false
     private var lastComment = 0L
     private var lastSig = ""
+    private var switchedAt = 0L
     @Volatile
     private var working = false
 
@@ -50,7 +51,7 @@ class PixEyes : AccessibilityService() {
             } catch (_: Exception) {
                 working = false
             }
-            main.postDelayed(this, 4_000)
+            main.postDelayed(this, 2_000)
         }
     }
 
@@ -59,7 +60,7 @@ class PixEyes : AccessibilityService() {
         running = true
         Store.log("busy", "👀 Глаза Пикса включены")
         main.removeCallbacks(tick)
-        main.postDelayed(tick, 4_000)
+        main.postDelayed(tick, 2_000)
     }
 
     override fun onDestroy() {
@@ -74,8 +75,11 @@ class PixEyes : AccessibilityService() {
         if (e == null) return
         val pkg = e.packageName?.toString() ?: return
         if (pkg == packageName || ignored(pkg)) return
-        if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != currentPkg) {
-            currentPkg = pkg
+        if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (pkg != currentPkg) {
+                currentPkg = pkg
+                switchedAt = System.currentTimeMillis()
+            }
         }
         dirty = true
         lastEvent = System.currentTimeMillis()
@@ -93,12 +97,14 @@ class PixEyes : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now < Store.buddyMuteUntil) return
         val interval = when (level) {
-            1 -> 180_000L
-            2 -> 90_000L
-            else -> 40_000L
+            1 -> 120_000L
+            2 -> 50_000L
+            else -> 20_000L
         }
-        if (now - lastComment < interval) return
-        if (now - lastEvent < 1_500) return // ждём, пока экран «успокоится»
+        // открыл новое приложение — можно отреагировать почти сразу
+        val freshSwitch = switchedAt > lastComment && now - lastComment > 12_000L
+        if (now - lastComment < interval && !freshSwitch) return
+        if (now - lastEvent < 1_200) return // ждём, пока экран «успокоится»
         if (!(getSystemService(POWER_SERVICE) as PowerManager).isInteractive) return
         if (Store.buddyToday() >= 200) return
 
@@ -206,6 +212,7 @@ class PixEyes : AccessibilityService() {
             val line = (if (i in 1..10) out.substring(i + 1) else out).trim()
             if (line.isEmpty() || line.equals("SKIP", true)) return
             Store.countBuddy()
+            Store.addBuddyLine(line)
             Bus.emit(Event("buddy", "$emo|$line"))
         } catch (_: Exception) {
             // друг просто промолчит

@@ -79,6 +79,7 @@ class MainActivity : Activity() {
     private lateinit var cbSleep: CheckBox
     private lateinit var fWatch: EditText
     private val buddyBtns = ArrayList<Button>()
+    private val styleBtns = ArrayList<Button>()
     private lateinit var eyesStatus: TextView
     private lateinit var cbBuddyImages: CheckBox
     private lateinit var fBuddyExclude: EditText
@@ -156,6 +157,15 @@ class MainActivity : Activity() {
         buddyBtns.clear()
         levels.forEachIndexed { i, label -> buddyBtns.add(button(label) { setBuddyLevel(i) }) }
         buddyCard.addView(row(*buddyBtns.toTypedArray()))
+        buddyCard.addView(text("Характер:", 13f, cSub), fullWidth(top = 8))
+        styleBtns.clear()
+        listOf("😂 Угарный", "😏 Дерзкий", "🥰 Добрый").forEachIndexed { i, label ->
+            styleBtns.add(button(label) {
+                Store.buddyStyle = i
+                refreshDynamic()
+            })
+        }
+        buddyCard.addView(row(*styleBtns.toTypedArray()))
         eyesStatus = text("", 13f, cText)
         buddyCard.addView(eyesStatus, fullWidth(top = 8))
         buddyCard.addView(button("Включить «Глаза Пикса» (спец. возможности)") {
@@ -379,6 +389,7 @@ class MainActivity : Activity() {
         }
         reqText.text = "Запросов к ИИ сегодня: ${Store.requestsToday()}"
         buddyBtns.forEachIndexed { i, b -> styleButton(b, i == Store.buddyLevel) }
+        styleBtns.forEachIndexed { i, b -> styleButton(b, i == Store.buddyStyle) }
         eyesStatus.text = when {
             !eyesEnabled() -> "Глаза Пикса: выключены — включи кнопкой ниже"
             Store.buddyLevel == 0 -> "Глаза Пикса: включены, но друг выключен — выбери частоту"

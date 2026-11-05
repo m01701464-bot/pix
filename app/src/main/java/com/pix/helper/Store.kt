@@ -295,6 +295,26 @@ object Store {
         get() = p.getInt("buddyLevel", 0)
         set(v) = p.edit().putInt("buddyLevel", v).apply()
 
+    /** Характер друга: 0 — угарный, 1 — дерзкий, 2 — добрый */
+    var buddyStyle: Int
+        get() = p.getInt("buddyStyle", 0)
+        set(v) = p.edit().putInt("buddyStyle", v).apply()
+
+    @Synchronized
+    fun addBuddyLine(line: String) {
+        val a = arr("buddyRecent")
+        a.put(line)
+        saveArr("buddyRecent", a, 8)
+    }
+
+    @Synchronized
+    fun buddyRecent(): List<String> {
+        val a = arr("buddyRecent")
+        val l = ArrayList<String>()
+        for (i in 0 until a.length()) l.add(a.optString(i))
+        return l
+    }
+
     var buddyImages: Boolean
         get() = p.getBoolean("buddyImages", true)
         set(v) = p.edit().putBoolean("buddyImages", v).apply()
