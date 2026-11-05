@@ -78,6 +78,10 @@ class MainActivity : Activity() {
     private lateinit var fSummaryHour: EditText
     private lateinit var cbSleep: CheckBox
     private lateinit var fWatch: EditText
+    private val buddyBtns = ArrayList<Button>()
+    private lateinit var eyesStatus: TextView
+    private lateinit var cbBuddyImages: CheckBox
+    private lateinit var fBuddyExclude: EditText
     private lateinit var fAliases: EditText
     private lateinit var cbWatchClear: CheckBox
     private lateinit var fWatchEvery: EditText
@@ -143,6 +147,27 @@ class MainActivity : Activity() {
         overlayBtn = button("") { toggleOverlay() }
         ovCard.addView(overlayBtn, fullWidth(top = 10))
         ovCard.addView(button("Открыть чат с Пиксом") { openChat() }, fullWidth(top = 6))
+
+        // Пикс-друг
+        val buddyCard = card(root, "Пикс-друг 👀")
+        buddyCard.addView(text("Пикс смотрит в телефон вместе с тобой и иногда бросает реплики: ржёт с мемов, комментирует видео и то, что ты пишешь. Работает, пока глаз на экране.", 13f, cSub))
+        buddyCard.addView(text("⚠️ Текст и скриншоты экрана отправляются ИИ (Gemini или Groq). На экранах с паролями и в приложениях из исключений Пикс молчит.", 12f, 0xFFFFC66B.toInt()), fullWidth(top = 6))
+        val levels = listOf("Выкл", "Редко", "Иногда", "Часто")
+        buddyBtns.clear()
+        levels.forEachIndexed { i, label -> buddyBtns.add(button(label) { setBuddyLevel(i) }) }
+        buddyCard.addView(row(*buddyBtns.toTypedArray()))
+        eyesStatus = text("", 13f, cText)
+        buddyCard.addView(eyesStatus, fullWidth(top = 8))
+        buddyCard.addView(button("Включить «Глаза Пикса» (спец. возможности)") {
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                toast("Найди «Глаза Пикса» (может быть в «Скачанные приложения») и включи")
+            } catch (e: Exception) {
+                openAppDetails()
+            }
+        }, fullWidth(top = 6))
+        cbBuddyImages = checkbox(buddyCard, "Смотреть картинки и видео (скриншоты, нужен ключ Gemini)", Store.buddyImages)
+        fBuddyExclude = field(buddyCard, "Не комментировать в приложениях (названия через запятую)", Store.buddyExclude, "Kaspi, Банк")
 
         // Доступы
         val permCard = card(root, "Доступы")
@@ -352,6 +377,12 @@ class MainActivity : Activity() {
             tv.background = if (ok) null else round(cAccent, dp(10))
         }
         reqText.text = "Запросов к ИИ сегодня: ${Store.requestsToday()}"
+        buddyBtns.forEachIndexed { i, b -> styleButton(b, i == Store.buddyLevel) }
+        eyesStatus.text = when {
+            !eyesEnabled() -> "Глаза Пикса: выключены — включи кнопкой ниже"
+            Store.buddyLevel == 0 -> "Глаза Пикса: включены, но друг выключен — выбери частоту"
+            else -> "Глаза Пикса: смотрят 👀 Реплик сегодня: ${Store.buddyToday()}"
+        }
         learnedText.text = "Выучено моих сообщений: ${Store.ownSamples(100).size}"
         // если Пикс сам запомнил кого-то из чата — показать это в поле
         if (Store.peopleNotes != peopleSynced) {
@@ -443,6 +474,8 @@ class MainActivity : Activity() {
         Store.whitelist = fWhite.text.toString().trim()
         Store.blacklist = fBlack.text.toString().trim()
         Store.sleepAtNight = cbSleep.isChecked
+        Store.buddyImages = cbBuddyImages.isChecked
+        Store.buddyExclude = fBuddyExclude.text.toString().trim()
         Store.watchGroups = fWatch.text.toString().trim()
         Store.ownerAliases = fAliases.text.toString().trim()
         Store.watchClear = cbWatchClear.isChecked
@@ -492,6 +525,18 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Отмена", null)
             .show()
+    }
+
+    private fun eyesEnabled(): Boolean {
+        val s = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        return s.contains("$packageName/")
+    }
+
+    private fun setBuddyLevel(i: Int) {
+        Store.buddyLevel = i
+        if (i > 0 && !eyesEnabled()) toast("Теперь включи «Глаза Пикса» кнопкой ниже")
+        if (i > 0 && !OverlayService.running) toast("И покажи Пикса на экране — он комментирует, только когда виден")
+        refreshDynamic()
     }
 
     private fun showDigestNow() {

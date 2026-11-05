@@ -182,6 +182,15 @@ object Gemini {
     fun chatText(model: String, system: String, contents: JSONArray, maxTokens: Int): String =
         textOf(content(callSmart(model, system, contents, null, maxTokens)))
 
+    /** Запрос с картинкой (скриншот в base64 JPEG). */
+    fun simpleImage(model: String, system: String, user: String, jpegB64: String, maxTokens: Int): String {
+        val parts = JSONArray()
+            .put(JSONObject().put("inlineData", JSONObject().put("mimeType", "image/jpeg").put("data", jpegB64)))
+            .put(JSONObject().put("text", user))
+        val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", parts))
+        return textOf(content(callSmart(model, system, contents, null, maxTokens, attempts = 1, fast = true)))
+    }
+
     fun simple(model: String, system: String, user: String, maxTokens: Int, fast: Boolean = false): String {
         val contents = JSONArray().put(
             JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", user)))

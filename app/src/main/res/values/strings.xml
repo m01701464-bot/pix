@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Пикс</string>
+    <string name="eyes_name">Глаза Пикса</string>
+    <string name="eyes_desc">Пикс смотрит на экран вместе с тобой и комментирует видео, мемы и переписку, как друг. Текст и скриншоты экрана отправляются выбранному ИИ (Gemini или Groq). На экранах с паролями и в приложениях из списка исключений Пикс молчит.</string>
 </resources>

@@ -397,6 +397,20 @@ class OverlayService : Service() {
                 addFeed(2, "❗ Срочное: ${e.text}")
                 say("❗ Срочно: ${e.text}")
             }
+            "buddy" -> {
+                val i = e.text.indexOf('|')
+                val emo = if (i > 0) e.text.substring(0, i) else "ок"
+                val line = if (i > 0) e.text.substring(i + 1) else e.text
+                when (emo) {
+                    "ржу" -> flash(PixelSprite.Mood.HAPPY, 4000)
+                    "вау" -> flash(PixelSprite.Mood.DIZZY, 2500)
+                    "фу" -> flash(PixelSprite.Mood.ALERT, 2500)
+                    "грусть" -> flash(PixelSprite.Mood.SLEEP, 3000)
+                    "хм" -> flash(PixelSprite.Mood.THINKING, 2500)
+                }
+                awakeUntil = System.currentTimeMillis() + 10 * 60_000L
+                say(line, 8000)
+            }
             "summary" -> {
                 addFeed(1, "📋 Сводка дня:\n${e.text}")
                 flash(PixelSprite.Mood.HAPPY, 2500)
@@ -425,7 +439,7 @@ class OverlayService : Service() {
 
     // ---------------- Облачко с репликой ----------------
 
-    private fun say(text: String) {
+    private fun say(text: String, ms: Long = 6000) {
         if (panelRoot != null) return
         val bp = bubbleParams ?: return
         val s = sprite ?: return
@@ -460,7 +474,7 @@ class OverlayService : Service() {
         try {
             wm.addView(tv, lp)
             sayView = tv
-            handler.postDelayed(hideSayR, 6000)
+            handler.postDelayed(hideSayR, ms)
         } catch (_: Exception) {
         }
     }
@@ -559,6 +573,10 @@ class OverlayService : Service() {
             Store.markAllSeen()
             applyMood()
             addFeed(2, "Все сообщения отмечены прочитанными")
+        }, LinearLayout.LayoutParams(gap))
+        quick.addView(chip("🤫 Помолчи") {
+            Store.buddyMuteUntil = System.currentTimeMillis() + 30 * 60_000L
+            addFeed(2, "Ок, полчаса молчу и не комментирую экран 🤐")
         }, LinearLayout.LayoutParams(gap))
         quick.addView(chip("⏻ Выключить") {
             Store.turnOff()

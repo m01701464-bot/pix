@@ -289,6 +289,48 @@ object Store {
         Bus.emit(Event("busy"))
     }
 
+    // ---------- Пикс-друг (комментирует экран) ----------
+    /** 0 — выкл, 1 — редко, 2 — иногда, 3 — часто */
+    var buddyLevel: Int
+        get() = p.getInt("buddyLevel", 0)
+        set(v) = p.edit().putInt("buddyLevel", v).apply()
+
+    var buddyImages: Boolean
+        get() = p.getBoolean("buddyImages", true)
+        set(v) = p.edit().putBoolean("buddyImages", v).apply()
+
+    var buddyExclude: String
+        get() = s("buddyExclude", "Kaspi, Halyk, банк, Bank, Authenticator, Пароли, Настройки")
+        set(v) = put("buddyExclude", v)
+
+    var buddyMuteUntil: Long
+        get() = p.getLong("buddyMuteUntil", 0L)
+        set(v) = p.edit().putLong("buddyMuteUntil", v).apply()
+
+    /** Банки, пароли и всё из списка исключений — не комментируем */
+    fun buddyExcluded(label: String, pkg: String): Boolean {
+        val l = label.lowercase()
+        val p2 = pkg.lowercase()
+        val builtIn = listOf("bank", "kaspi", "halyk", "authenticator", "password", "wallet", "keepass", "bitwarden")
+        if (builtIn.any { p2.contains(it) }) return true
+        return names(buddyExclude).any { l.contains(it) || p2.contains(it) }
+    }
+
+    @Synchronized
+    fun countBuddy() {
+        val day = java.text.SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+        if (s("buddyDay", "") != day) {
+            put("buddyDay", day)
+            p.edit().putInt("buddyCount", 0).apply()
+        }
+        p.edit().putInt("buddyCount", p.getInt("buddyCount", 0) + 1).apply()
+    }
+
+    fun buddyToday(): Int {
+        val day = java.text.SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+        return if (s("buddyDay", "") == day) p.getInt("buddyCount", 0) else 0
+    }
+
     // ---------- Слежка за группами ----------
     /** Названия групп через запятую — Пикс в них молчит и собирает выжимку */
     var watchGroups: String
